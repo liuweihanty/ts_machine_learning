@@ -1,0 +1,122 @@
+---
+title: "TS Unsupervised Learning"
+author: "Shirley Zhou"
+date: "11/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r read data}
+ts.data <- read.csv("../data/work_data.csv", header = TRUE)
+rownames(ts.data) <- ts.data$Gene
+drop <- c('X','Gene','Entrez.GeneID','ENSEMBL_ID')
+ts.data <- ts.data[,!(names(ts.data) %in% drop)]
+head(ts.data)
+```
+
+# PCA
+
+```{r PCA}
+pr.out <- prcomp(ts.data, scale = TRUE, center = TRUE)
+summary(pr.out)
+```
+
+From the summary of the PCA result we can see that the first 10 PCA roughly incorporate 75% of the variance, and the first 19 PCA roughly incorporate 90% of the variance 
+
+```{r PVE and scree plot}
+pr.var <- pr.out$sdev^2
+pve <- pr.var / sum(pr.var)
+
+plot(pve, xlab = "Principal Component",
+     ylab = "Proportion of Variance Explained",
+     ylim = c(0, 1), type = "b")
+
+plot(cumsum(pve), xlab = "Principal Component",
+     ylab = "Cumulative Proportion of Variance Explained",
+     ylim = c(0, 1), type = "b")
+```
+
+```{PCA biplot}
+biplot(pr.out)
+```
+
+# K-Means
+
+```{r K-mneans test for number of cluster }
+wss <- 0
+
+# For 1 to 44 cluster centers
+for (i in 1:44) {
+  km.out <- kmeans(ts.data, centers = i, nstart = 20)
+  # Save total within sum of squares to wss variable
+  wss[i] <- km.out$tot.withinss
+}
+
+# Plot total within sum of squares vs. number of clusters
+plot(1:44, wss, type = "b", 
+     xlab = "Number of Clusters", 
+     ylab = "Within groups sum of squares")
+```
+
+Seems that the elbow is cluster = 3
+
+```{r kmeans with number of cluster equals to 3}
+km.out <- kmeans(ts.data, centers = 3, nstart = 20, iter.max = 50)
+km.out
+```
+
+
+```{r hierarchical model - avg}
+hclust.avg <- hclust(dist(ts.data), method = 'average')
+summary(hclust.avg)
+```
+
+```{r hierarchical model - complete}
+hclust.comp <- hclust(dist(ts.data), method = 'complete')
+summary(hclust.comp)
+```
+
+
+```{r dendrogram with method as average}
+plot(hclust.avg, main = "Average")
+```
+
+```{r dendrogram with method as complete}
+plot(hclust.comp, main = "complete")
+```
+
+```{r cut tree with number of cluster equals to 3}
+hclust.cut <- cutree(hclust.avg, k = 3)
+hclust.cut
+```
+
+``` {r compare two methods}
+table(hclust.cut, km.out$cluster)
+```
+
+The catagorical comparison above shows that the clustering result from `hclust` and `kmeans` roughly align well except they were called different groups:
+- group 1 in hclust = group 2 in kmeans
+- group 2 in hclust = group 3 in kmeans
+- group 3 in hclust = group 1 in kmeans
+
+```{r form a dataframe with the result part 1}
+hclust.cut.cov = c()
+for (i in 1:length(hclust.cut)) {
+  if (hclust.cut[i] == 1) {
+    hclust.cut.cov <- append(hclust.cut.cov, 2)
+  } else if (hclust.cut[i] == 2) {
+    hclust.cut.cov <- append(hclust.cut.cov, 3)
+  } else if (hclust.cut[i] == 3) {
+    hclust.cut.cov <- append(hclust.cut.cov, 1)
+  }
+}
+
+cluster <- data.frame('hclust' = hclust.cut.cov, 'kmeans' = km.out$cluster)
+head(cluster, 10)
+```
+
+
+
