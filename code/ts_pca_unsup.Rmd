@@ -22,6 +22,8 @@ head(ts.data)
 ```{r PCA}
 pr.out <- prcomp(ts.data, scale = TRUE, center = TRUE)
 summary(pr.out)
+
+#elbowplot
 ```
 
 From the summary of the PCA result we can see that the first 10 PCA roughly incorporate 75% of the variance, and the first 19 PCA roughly incorporate 90% of the variance 
@@ -29,32 +31,63 @@ From the summary of the PCA result we can see that the first 10 PCA roughly inco
 ```{r PVE and scree plot}
 pr.var <- pr.out$sdev^2
 pve <- pr.var / sum(pr.var)
-
 plot(pve, xlab = "Principal Component",
      ylab = "Proportion of Variance Explained",
      ylim = c(0, 1), type = "b")
+#or you can just use: fviz_eig(pr.out,ncp = 20)
 
 plot(cumsum(pve), xlab = "Principal Component",
      ylab = "Cumulative Proportion of Variance Explained",
      ylim = c(0, 1), type = "b")
 ```
 
-```{PCA biplot}
-biplot(pr.out)
+PCA biplot
+```{r,fig.width= 8, fig.height=6}
+#install and load factpextra: Easy Multivariate Data Analyses and Elegant Visualization for better PCA visualization
+#if(!require(devtools)) install.packages("devtools")
+devtools::install_github("kassambara/factoextra")
+library(factoextra)
+
+fviz_pca_ind(pr.out,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE)
 ```
+
+Positive correlated variables point to the same side of the plot. Negative correlated variables point to opposite sides of the graph. We see screens clusters into 3 clusters by their relateness
+```{r}
+fviz_pca_var(pr.out,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             ) + geom_text()
+```
+
+
+Biplot of genes and screens
+```{r}
+fviz_pca_biplot(pr.out, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+                col.ind = "#696969" ,# Individuals color
+                label = "none")
+```
+
+We expect the genes to be different on PCA, adn it is what we see here
+
+
+
 
 # K-Means
 
 ```{r K-mneans test for number of cluster }
 wss <- 0
-
 # For 1 to 44 cluster centers
 for (i in 1:44) {
   km.out <- kmeans(ts.data, centers = i, nstart = 20)
   # Save total within sum of squares to wss variable
   wss[i] <- km.out$tot.withinss
 }
-
 # Plot total within sum of squares vs. number of clusters
 plot(1:44, wss, type = "b", 
      xlab = "Number of Clusters", 
@@ -113,10 +146,6 @@ for (i in 1:length(hclust.cut)) {
     hclust.cut.cov <- append(hclust.cut.cov, 1)
   }
 }
-
 cluster <- data.frame('hclust' = hclust.cut.cov, 'kmeans' = km.out$cluster)
 head(cluster, 10)
 ```
-
-
-
