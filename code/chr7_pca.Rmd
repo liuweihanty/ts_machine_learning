@@ -45,9 +45,10 @@ plot(cumsum(pve), xlab = "Principal Component",
 
 PCA biplot
 ```{r,fig.width= 8, fig.height=6}
+library(FactoMineR)
 library("factoextra")
 fviz_pca_ind(pr.out,
-             habillage = chr7$type,
+             col.ind = chr7$type,
              label = "none",
              palette = c("#00AFBB", "#E7B800", "#FC4E07", "#9900FF"),
              addEllipses=TRUE
