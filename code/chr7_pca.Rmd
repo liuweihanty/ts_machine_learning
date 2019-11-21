@@ -47,7 +47,7 @@ PCA biplot
 ```{r,fig.width= 8, fig.height=6}
 library("factoextra")
 fviz_pca_ind(pr.out,
-             habillage = chr7$type,
+             col.ind = chr7$type,
              label = "none",
              palette = c("#00AFBB", "#E7B800", "#FC4E07", "#9900FF"),
              addEllipses=TRUE
@@ -56,17 +56,39 @@ fviz_pca_ind(pr.out,
 
 
 ```{r}
-iris.pca <- prcomp(iris[,-5])
-# Visualize
-# Use habillage to specify groups for coloring
-fviz_pca_ind(iris.pca,
-             label = "none", # hide individual labels
-             habillage = iris$Species, # color by groups
-             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
-             addEllipses = TRUE # Concentration ellipses
-             )
+km.out <- kmeans(chr7[,-1], centers = 30, nstart = 20, iter.max = 50)
+km.out
 ```
 
-```{r}
-iris
+```{r visualize the kmeans result}
+
+library(cluster)
+clusplot(chr7[, -1], km.out$cluster, color=TRUE, shade=FALSE, 
+         labels=FALSE, lines=0)
 ```
+
+```{r put kmeans group result into the data frame}
+group = c()
+for (i in km.out$cluster) {
+  group <- append(group, i)
+}
+chr7.new <- chr7[1]
+chr7.new$group <- group
+```
+
+```{r amp group}
+chr7.amp <- subset(chr7.new, type == 'amp')
+chr7.amp
+```
+```{r loss group}
+chr7.loss <- subset(chr7.new, type == 'loss')
+chr7.loss
+```
+
+
+```{r ts96 group}
+chr7.ts96 <- subset(chr7.new, type == 'ts_96')
+chr7.ts96
+```
+
+
