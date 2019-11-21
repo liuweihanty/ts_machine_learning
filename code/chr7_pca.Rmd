@@ -45,6 +45,7 @@ plot(cumsum(pve), xlab = "Principal Component",
 
 PCA biplot
 ```{r,fig.width= 8, fig.height=6}
+library(FactoMineR)
 library("factoextra")
 fviz_pca_ind(pr.out,
              col.ind = chr7$type,
