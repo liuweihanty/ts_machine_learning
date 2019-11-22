@@ -55,7 +55,7 @@ fviz_pca_ind(pr.out,
              )
 ```
 
-
+Kmeans
 ```{r}
 km.out <- kmeans(chr7[,-1], centers = 30, nstart = 20, iter.max = 50)
 km.out
