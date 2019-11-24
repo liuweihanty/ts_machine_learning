@@ -1,0 +1,95 @@
+---
+title: "Chr7 Gene PCA"
+author: "Shirley Zhou"
+date: "11/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r read data}
+chr7 <- read.csv("../data/chr7_work_data.csv", header = TRUE)
+rownames(chr7) <- chr7$Gene
+drop <- c('X','Gene','ENSEMBL_ID')
+chr7 <- chr7[,!(names(chr7) %in% drop)]
+head(chr7)
+```
+
+```{r}
+chr7
+```
+
+```{r PCA}
+pr.out <- prcomp(chr7[,-1], scale = TRUE, center = TRUE)
+summary(pr.out)
+```
+
+
+```{r PVE and scree plot}
+pr.var <- pr.out$sdev^2
+pve <- pr.var / sum(pr.var)
+plot(pve, xlab = "Principal Component",
+     ylab = "Proportion of Variance Explained",
+     ylim = c(0, 1), type = "b")
+#or you can just use: fviz_eig(pr.out,ncp = 20)
+
+plot(cumsum(pve), xlab = "Principal Component",
+     ylab = "Cumulative Proportion of Variance Explained",
+     ylim = c(0, 1), type = "b")
+```
+
+
+PCA biplot
+```{r,fig.width= 8, fig.height=6}
+library(FactoMineR)
+library("factoextra")
+fviz_pca_ind(pr.out,
+             col.ind = chr7$type,
+             label = "none",
+             palette = c("#00AFBB", "#E7B800", "#FC4E07", "#9900FF"),
+             addEllipses=TRUE
+             )
+```
+
+
+```{r}
+km.out <- kmeans(chr7[,-1], centers = 30, nstart = 20, iter.max = 50)
+km.out
+```
+
+```{r visualize the kmeans result}
+
+library(cluster)
+clusplot(chr7[, -1], km.out$cluster, color=TRUE, shade=FALSE, 
+         labels=FALSE, lines=0)
+```
+
+```{r put kmeans group result into the data frame}
+group = c()
+for (i in km.out$cluster) {
+  group <- append(group, i)
+}
+chr7.new <- chr7[1]
+chr7.new$group <- group
+```
+
+```{r amp group}
+chr7.amp <- subset(chr7.new, type == 'amp')
+chr7.amp
+```
+```{r loss group}
+chr7.loss <- subset(chr7.new, type == 'loss')
+chr7.loss
+```
+
+
+```{r ts96 group}
+chr7.ts96 <- subset(chr7.new, type == 'ts_96')
+chr7.ts96
+```
+
+

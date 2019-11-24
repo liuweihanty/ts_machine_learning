@@ -10,18 +10,53 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+```{r}
+library(ggplot2)
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+```
 
+
+
+Read in files that contain all chr 7 genes
 ```{r read data}
 chr7 <- read.csv("../data/chr7_work_data.csv", header = TRUE)
 rownames(chr7) <- chr7$Gene
 drop <- c('X','Gene','ENSEMBL_ID')
 chr7 <- chr7[,!(names(chr7) %in% drop)]
 head(chr7)
+str(chr7)
+colnames(chr7)
 ```
 
+get rid of the p value and fdr columns, as they are only an indicator of significance
 ```{r}
-chr7
+
+chr7 <- chr7 %>% select(-contains("fdr")) %>% 
+        select(-contains("pvalue")) %>%
+        select(-contains("p.values"))
+        
+str(chr7)
+
 ```
+
+
+First, do visualization of data distribution for every column, for the eventual clustering, we should choose columns whose data can seperate the 96 ts candidates and the rest of chr7 genes 
+```{r, fig.width = 2, fig.height = 1}
+for (i in 2:ncol(chr7)) {
+     #plot the density graph
+     print(ggplot(chr7, aes(x = chr7[,i], fill = type)) + geom_density(alpha = 0.4) + ggtitle(colnames(chr7[i]))) 
+} 
+
+
+
+```
+
+
+
+
+
 
 ```{r PCA}
 pr.out <- prcomp(chr7[,-1], scale = TRUE, center = TRUE)
@@ -55,11 +90,68 @@ fviz_pca_ind(pr.out,
              )
 ```
 
+Kmeans
 
+Data preprocessing
+To perform a kmeans analysis, the data should be prepared as follows:
+1.Rows are observations (individuals) and columns are variables
+2.Any missing value in the data must be removed or estimated.
+3.The data must be standardized (i.e., scaled) to make variables comparable. Recall that, standardization consists of transforming the variables such that they have mean zero and standard deviation one.
 ```{r}
-km.out <- kmeans(chr7[,-1], centers = 30, nstart = 20, iter.max = 50)
+chr7_scaled <- scale(chr7[,-1])
+head(chr7_scaled)
+```
+
+
+compute a distance matrix between the rows oif the data, the default is Euclidean distance
+```{r}
+distance <- get_dist(chr7_scaled, method = "pearson")
+#visualize the distance matrix
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+Performs kmeans clustering
+```{r}
+km.out <- kmeans(chr7_scaled, centers = 2, nstart = 25)
 km.out
 ```
+
+Visualize kmeans result
+```{r}
+#attach the type column to scaled data, the type column specifies whether the gene is ts_96, loss(ts), amp(oncogene), or others
+chr7_scaled <- cbind(chr7_scaled,as.character(chr7$type))
+colnames(chr7_scaled)[30] <- "gene"
+#convert the scaled chr7 data  from matrix to dataframe for easier manipulation for plotting
+chr7_scaled <- as.data.frame(chr7_scaled, stringsAsFactors = FALSE)
+
+#convert the numeric columns from character to numeric data type
+chr7_scaled[1:29] <- lapply(chr7_scaled[1:29], function(x) type.convert(as.numeric(x)))
+#convert the gene column to factor, for plotting
+chr7_scaled$gene <- as.factor(chr7_scaled$gene)
+#plot
+fviz_cluster(km.out, data = chr7_scaled[1:29], labelsize = 1) + 
+        geom_point(aes(colour = chr7_scaled$gene))
+
+
+```
+
+
+Try several valus of centers
+```{r}
+for (i in 3:5) {
+        km <- kmeans(chr7_scaled[-30], centers = i, nstart = 25)
+        p <- fviz_cluster(km, geom = "point", data = chr7_scaled[-30],alpha = 0.4) + geom_point(aes(colour = chr7_scaled$gene))
+        print(p)
+        
+}
+```
+
+
+UMAP method to visualize dimension reduced-data
+
+
+
+
 
 ```{r visualize the kmeans result}
 
