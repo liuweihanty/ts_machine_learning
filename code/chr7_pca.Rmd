@@ -49,8 +49,6 @@ for (i in 2:ncol(chr7)) {
      print(ggplot(chr7, aes(x = chr7[,i], fill = type)) + geom_density(alpha = 0.4) + ggtitle(colnames(chr7[i]))) 
 } 
 
-
-
 ```
 
 
