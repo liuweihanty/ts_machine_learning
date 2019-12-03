@@ -1,0 +1,236 @@
+---
+title: "SVM"
+author: "Weihan Liu"
+date: "30/11/2019"
+output: html_document
+---
+
+
+SVM-Rank is a technique to order lists of items.  SVM-Rank  use standard SVM for ranking task.
+Lets suppose,
+we have a classifier(SVM)  and  we have two items, item1 and item2.
+Item1 is expected to be ordered before item2.
+Then,
+Input to the classifier:   (item1, item2)
+Output of the classifier: 1 [which implies  ordering of item is correct ie. item1 is better than item2]
+Input of the classifier : (item2, item1)
+Output of the classifier : -1 [which implies ordering of item is  incorrect ]
+
+Lets say the preferred order of three items is (item1 , item2 , item3)
+Classify the pair of items using the trained classifier
+(item1, item2) =  1 , (item1, item3) =  1  => score of item1 =  1 + 1 = 2
+(item2, item1) = -1 , (item2, item3) =  1  => score of item2 = -1 + 1 = 0
+(item3, item1) = -1 , (item3, item2) = -1  => score of item3 = -1 - 1 = -2
+
+Based on the score we get rank: item1, item2 , item3
+The same process can be repeated for any number of items.
+Initial step of optimisation problem is formulated as ordinal regression; however, using pair wise difference the regression problem is converted into classification problem.
+SVM-Rank used pairwise difference vectors to produce rank list of items.
+So, given a list of items represented as feature vector, if  we want to order them then SVM-Rank is right things to use.
+
+
+
+
+
+The best decision boundary is the one that maximize the margin(distance from decison boundary points to  the data points)
+Maximal margin seperator lies halfway between the two clusters. It is located at the mean of the relevant extreme points from each class.
+```{r setup, include=FALSE}
+
+```
+
+
+
+e1071 library has SVM with linear kernels
+kernel refers to the type of decisoon boundary of a SVM, linear, polinomial etc
+Creating training and test datasets
+Splitting a dataset into training and test sets is an important step in building and testing a classification model. The training set is used to build the model and the test set to evaluate its predictive accuracy.
+In this exercise, you will split the dataset you created in the previous chapter into training and test sets. The dataset has been loaded in the dataframe df and a seed has already been set to ensure reproducibility.
+```{r}
+library(e1071)
+#split train and test data in an 80/20 proportion
+df[, "train"] <- ifelse(runif(nrow(df))< 0.8, 1, 0)
+
+#assign training rows to data frame trainset
+trainset <- df[df$train == 1, ]
+#assign test rows to data frame testset
+testset <- df[df$train == 0, ]
+
+#find index of "train" column
+trainColNum <- grep("train", names(df))
+
+#remove "train" column from train and test dataset
+trainset <- trainset[, -trainColNum]
+testset <- testset[, -trainColNum]
+```
+
+
+Building a linear SVM classifier
+In this exercise, you will use the svm() function from the e1071 library to build a linear SVM classifier using training dataset you created in the previous exercise. The training dataset has been loaded for you in the dataframe trainset
+```{r}
+#build svm model, setting required parameters
+svm_model<- svm(y ~ ., 
+                data = trainset, 
+                type = "C-classification", 
+                kernel = "linear", 
+                scale = FALSE)
+```
+
+
+Exploring the model and calculating accuracy
+In this exercise you will explore the contents of the model and calculate its training and test accuracies. The training and test data are available in the data frames trainset and testset respectively, and the SVM model is stored in the variable svm_model
+```{r}
+#list components of model
+names(svm_model)
+#list values of the SV, index and rho
+svm_model$SV
+svm_model$index
+svm_model$rho
+
+#compute test accuracy
+pred_test <- predict(svm_model, testset)
+mean(pred_test == testset$y)
+
+```
+
+
+In this exercise you will plot the training dataset you used to build a linear SVM and mark out the support vectors. The training dataset has been preloaded for you in the dataframe trainset and the SVM model is stored in the variable svm_model.
+```{r}
+#build scatter plot of training dataset
+scatter_plot <- ggplot(data = trainset, aes(x = x1, y = x2, color = y)) + 
+    geom_point() + 
+    scale_color_manual(values = c("red", "blue"))
+ 
+#add plot layer marking out the support vectors 
+layered_plot <- 
+    scatter_plot + geom_point(data = trainset[svm_model$index, ], aes(x = x1, y = x2), color = "purple", size = 4, alpha = 0.5)
+
+#display plot
+layered_plot
+```
+
+
+Exercise
+Visualizing decision & margin bounds using `ggplot2`
+In this exercise, you will add the decision and margin boundaries to the support vector scatter plot created in the previous exercise. The SVM model is available in the variable svm_model and the weight vector has been precalculated for you and is available in the variable w. The ggplot2 library has also been preloaded.
+```{r}
+#build weight vector
+w <- t(svm_model$coefs) %*% svm_model$SV
+#calculate slope and intercept of decision boundary from weight vector and svm model
+slope_1 <- -w[1]/w[2]
+intercept_1 <- svm_model$rho/w[2]
+
+#build scatter plot of training dataset
+scatter_plot <- ggplot(data = trainset, aes(x = x1, y = x2, color = y)) + 
+    geom_point() + scale_color_manual(values = c("red", "blue"))
+#add decision boundary 
+plot_decision <- scatter_plot + geom_abline(slope = slope_1, intercept = intercept_1) 
+#add margin boundaries
+plot_margins <- plot_decision + 
+ geom_abline(slope = slope_1, intercept = intercept_1 - 1/w[2], linetype = "dashed")+
+ geom_abline(slope = slope_1, intercept = intercept_1 + 1/w[2], linetype = "dashed")
+#display plot
+plot_margins
+```
+
+
+
+Visualizing decision & margin bounds using `plot()`
+In this exercise, you will rebuild the SVM model (as a refresher) and use the built in SVM plot() function to visualize the decision regions and support vectors. The training data is available in the dataframe trainset.
+```{r}
+#build svm model
+svm_model<- 
+    svm(y ~ ., data = trainset, type = "C-classification", 
+        kernel = "linear", scale = FALSE)
+
+#plot decision boundaries and support vectors for the training data
+plot(x = svm_model, data = trainset)
+```
+
+
+Parameters of SVM: 
+
+1)Cost: width of margin(how loose/stringent do you allow )
+small cost --> soft margin: wide margin, allows more misclassification
+large cost --> hard margin: narrow margin, allows less misclassification
+
+A soft margin linear clissifier will work best for a dataset that is almost linearly separable.
+A hard margin linear classifier will work best for a linearly separable dataset
+Neither soft nor hard margin linear classifiers will work for highly nonlinear decision boundaries
+
+
+Tuning a linear SVM
+In this exercise you will study the influence of varying cost on the number of support vectors for linear SVMs. To do this, you will build two SVMs, one with cost = 1 and the other with cost = 100 and find the number of support vectors. A model training dataset is available in the dataframe trainset.
+```{r}
+#build svm model, cost = 100
+svm_model_100 <- svm(y ~ .,
+                   data = trainset,
+                   type = "C-classification",
+                   cost = 100,
+                   kernel = "linear",
+                   scale = FALSE)
+
+#print model details
+svm_model_100
+```
+
+
+
+Visualizing decision boundaries and margins
+In the previous exercise you built two linear classifiers for a linearly separable dataset, one with cost = 1 and the other cost = 100. In this exercise you will visualize the margins for the two classifiers on a single plot. The following objects are available for use:
+
+The training dataset: trainset.
+The cost = 1 and cost = 100 classifiers in svm_model_1 and svm_model_100, respectively.
+The slope and intercept for the cost = 1 classifier is stored in slope_1 and intercept_1.
+The slope and intercept for the cost = 100 classifier is stored in slope_100 and intercept_100.
+Weight vectors for the two costs are stored in w_1 and w_100, respectively
+A basic scatter plot of the training data is stored in train_plot
+The ggplot2 library has been preloaded.
+
+SVM can also be used for multi class(>2) classification
+
+A multiclass classification problem
+In this exercise, you will use the svm() function from the e1071 library to build a linear multiclass SVM classifier for a dataset that is known to be perfectly linearly separable. Calculate the training and test accuracies, and plot the model using the training data. The training and test datasets are available in the dataframes trainset and testset. Use the default setting for the cost parameter.
+```{r}
+#load library and build svm model
+library(e1071)
+svm_model<- 
+    svm(y ~ ., data = trainset, type = "C-classification", 
+        kernel = "linear", scale = FALSE)
+
+#compute training accuracy
+pred_train <- predict(svm_model, trainset)
+mean(pred_train == trainset$y)
+
+#compute test accuracy
+pred_test <- predict(svm_model, testset)
+mean(pred_test == testset$y)
+
+#plot
+plot(svm_model, trainset)
+```
+
+
+
+For higher accuracy, it is recommended to do many training/testing partitions and calculate the average accuraccy
+In this exercise, you will build linear SVMs for 100 distinct training/test partitions of the iris dataset. You will then evaluate the performance of your model by calculating the mean accuracy and standard deviation. This procedure, which is quite general, will give you a far more robust measure of model performance than the ones obtained from a single partition.
+```{r}
+for (i in 1:100){ 
+  	#assign 80% of the data to the training set
+    iris[, "train"] <- ifelse(runif(nrow(iris)) < 0.8, 1, 0)
+    trainColNum <- grep("train", names(iris))
+    trainset <- iris[iris$train == 1, -trainColNum]
+    testset <- iris[iris$train == 0, -trainColNum]
+  	#build model using training data
+    svm_model <- svm(Species~ ., data = trainset, 
+                     type = "C-classification", kernel = "linear")
+    #calculate accuracy on test data
+    pred_test <- predict(svm_model, testset)
+    accuracy[i] <- mean(pred_test == testset$Species)
+}
+mean(accuracy)
+sd(accuracy)
+```
+
+
+More complex SVM kenerls:
+Besides being linear, the kernel could alsobe radial
