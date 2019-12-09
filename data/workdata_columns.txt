@@ -1,0 +1,261 @@
+Brum.HAP1.GTS: 
+    Paper: Brummelkamp 2015
+    Cell line: HAP1
+    Cancer Type: CML
+    Data Type: Gene Trap Score
+
+Brum.KBM7.GTS: 
+    Paper: Brummelkamp 2015
+    Cell line: KBM7
+    Cancer Type: CML
+    Data Type: Gene Trap Score
+   
+Chen.cs: 
+    Paper: Chen 2019
+    Cell line: PANC-1 
+    Cancer Type: Pancreatic Cancer
+    Data Type: CRISPRko Score
+
+Chen.pvalue: 
+    Paper: Chen 2019
+    Cell line: PANC-1 
+    Cancer Type: Pancreatic Cancer
+    Data Type: p-value based on CRISPRko Score
+
+Chen.fdr: 
+    Paper: Chen 2019
+    Cell line: PANC-1 
+    Cancer Type: Pancreatic Cancer
+    Data Type: false discovery rate based on CRISPRko Score
+
+Chen.ts.rank:
+    Paper: Chen 2019
+    Cell line: PANC-1 
+    Cancer Type: Pancreatic Cancer
+    Data Type: tumor suppressive ranking based on CRISPRko Score
+
+Weis14.csa.avg: 
+    Paper: Weissman 2014
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: CRISPRa Score
+
+Doen.avg.LFC: 
+    Paper: Doench 2018
+    Cell line: A375, HT29
+    Cancer Type: Melanoma, Colon Cancer
+    Data Type: average of CRISPR Score of the 2 lines
+            
+Doen.avg.neg.log.pvalue:
+    Paper: Doench 2018
+    Cell line: A375, HT29
+    Cancer Type: Melanoma, Colon Cancer
+    Data Type: average of negative log of p-value based on CRISPR Score of the 2 lines
+    
+Elle13.pvalue:
+    Paper: Elledge 2013
+    Cell line: Sequence data from >8,200 tumors from various databases
+    Cancer Type: Pan Cancer
+    Data Type: p-value
+    
+Elle13.fdr:
+    Paper: Elledge 2013
+    Cell line: Sequence data from >8,200 tumors from various databases
+    Cancer Type: Pan Cancer
+    Data Type: false discovery rate
+
+Elle13.lasso.prob:
+    Paper: Elledge 2013
+    Cell line: Sequence data from >8,200 tumors from various databases
+    Cancer Type: Pan Cancer
+    Data Type: lasso probability 
+    
+Elle18.HMEC.avg.LFC':
+    Paper: Elledge 2018
+    Cell line: hTERT-immortalized human mammary (breast) epithelial cell (HMEC), non-transformed
+    Cancer Type: breast?
+    Data Type: average of log2 fold change between the end and start of ORF screening 
+
+Elle18.HMEC.combined.pvalue: 
+    Paper: Elledge 2018
+    Cell line: hTERT-immortalized human mammary (breast) epithelial cell (HMEC), non-transformed
+    Cancer Type: breast?
+    Data Type: combined p-value based on log2 fold change between the end and start of ORF screening 
+
+Elle18.HMEC.fdr:
+    Paper: Elledge 2018
+    Cell line: hTERT-immortalized human mammary (breast) epithelial cell (HMEC), non-transformed
+    Cancer Type: breast?
+    Data Type: false discovery rate based on log2 fold change between the end and start of ORF screening 
+    
+Elle18.HPNE.avg.LFC: 
+    Paper: Elledge 2018
+    Cell line: reverse tetracycline transactivator (rtTA)-expressing immortalized human pancreatic nestin-expressing epithelial cells (HPNEs), non-transformed
+    Cancer Type: pancreatic?
+    Data Type: average of log2 fold change between the end and start of ORF screening 
+
+Elle18.HPNE.Combined.pvalue:
+    Paper: Elledge 2018
+    Cell line: reverse tetracycline transactivator (rtTA)-expressing immortalized human pancreatic nestin-expressing epithelial cells (HPNEs), non-transformed
+    Cancer Type: pancreatic?
+    Data Type: combined p-value based on log2 fold change between the end and start of ORF screening
+
+Elle18.HPNE.fdr: 
+    Paper: Elledge 2018
+    Cell line: reverse tetracycline transactivator (rtTA)-expressing immortalized human pancreatic nestin-expressing epithelial cells (HPNEs), non-transformed
+    Cancer Type: pancreatic?
+    Data Type: false discovery rate based on log2 fold change between the end and start of ORF screening 
+
+Sabb15.KBM7.cs:
+    Paper: Sabatini 2015
+    Cell line: KBM7
+    Cancer Type: CML
+    Data Type: CRISPR Score
+
+Sabb15.KBM7.fdr:
+    Paper: Sabatini 2015
+    Cell line: KBM7
+    Cancer Type: CML
+    Data Type: false discovery rate based on CRISPR Score
+Sabb15.K562.cs:
+    Paper: Sabatini 2015
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: CRISPR Score
+ 
+Sabb15.K562.fdr:
+    Paper: Sabatini 2015
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: false discovery rate based on CRISPR Score
+
+Sabb15.Jiyoye.cs:
+    Paper: Sabatini 2015
+    Cell line: Jiyoye
+    Cancer Type: Burkitt's Lymphoma
+    Data Type: CRISPR Score
+
+Sabb15.Jiyoye.fdr:
+    Paper: Sabatini 2015
+    Cell line: Jiyoye
+    Cancer Type: Burkitt's Lymphoma
+    Data Type: false discovery rate based on CRISPR Score
+
+Sabb15.Raji.cs:
+    Paper: Sabatini 2015
+    Cell line: Raji
+    Cancer Type: Burkitt's Lymphoma
+    Data Type: CRISPR Score
+
+Sabb15.Raji.fdr:
+    Paper: Sabatini 2015
+    Cell line: Raji
+    Cancer Type: Burkitt's Lymphoma
+    Data Type: false discovery rate based on CRISPR Score
+
+Sabb17.EOL:
+    Paper: Sabatini 2017
+    Cell line: EOL
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.HEL:
+    Paper: Sabatini 2017
+    Cell line: HEL
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.MOLM13:
+    Paper: Sabatini 2017
+    Cell line: MOLM13
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.MonoMac1:
+    Paper: Sabatini 2017
+    Cell line: MonoMac1
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.NB4.rep1:
+    Paper: Sabatini 2017
+    Cell line: NB4
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.NB4.rep2:
+    Paper: Sabatini 2017
+    Cell line: NB4
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+    
+Sabb17.OCI.AML2:
+    Paper: Sabatini 2017
+    Cell line: OCI-AML2
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+Sabb17.OCI.AML3:
+    Paper: Sabatini 2017
+    Cell line: OCI-AML3
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.OCI.AML5:
+    Paper: Sabatini 2017
+    Cell line: OCI-AML5
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.P31.FUJ:
+    Paper: Sabatini 2017
+    Cell line: P31/FUJ
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+    
+Sabb17.PL21:
+    Paper: Sabatini 2017
+    Cell line: PL21
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.SKM1:
+    Paper: Sabatini 2017
+    Cell line: SKM1
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.TF1:
+    Paper: Sabatini 2017
+    Cell line: TF1
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Sabb17.THP1:
+    Paper: Sabatini 2017
+    Cell line: THP1
+    Cancer Type: AML
+    Data Type: CRISPRko Score
+
+Weis16.csa.MW.pvalue:
+    Paper: Weissman 2016
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: p-value based on Mann Whittney analysis of CRISPRa Score
+    
+Weis16.csa.avg:
+    Paper: Weissman 2016
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: CRISPRa Score
+    
+Weis16.csi.MW.pvalue:
+    Paper: Weissman 2016
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: p-value based on Mann Whittney analysis of CRISPRi Score
+
+Weis16.csi.avg:
+    Paper: Weissman 2016
+    Cell line: K562
+    Cancer Type: CML
+    Data Type: CRISPRi Score
