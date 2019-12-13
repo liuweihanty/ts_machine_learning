@@ -1,0 +1,373 @@
+---
+title: "classification_tree"
+author: "Weihan Liu"
+date: "06/12/2019"
+output: html_document
+---
+
+categories of trees
+1.Classification vs regression trees
+2.bagged trees
+3.random forest
+4.boosted trees(GBM)
+
+trees requires NO normalization or standarization for numeric columns, can handle both numeric and categorical columns at the same time
+trees require very little data preprocessing(almost none). However, trees tend to have high variace and tend to overfit(too specific), so you need to be careful to tune the parameters/hyperparameters sufficiently
+
+
+##classification tree
+
+Let's get started and build our first classification tree. A classification tree is a decision tree that performs a classification (vs regression) task.
+
+You will train a decision tree model to understand which loan applications are at higher risk of default using a subset of the German Credit Dataset. The response variable, called "default", indicates whether the loan went into a default or not, which means this is a binary classification problem (there are just two classes).
+link to the dataset we use: https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29
+
+### fit the decision tree and the rpart.plot package to visualize the tree.
+```{r}
+# Look at the data
+str(creditsub)
+
+# Create the model, provide the training data frame
+credit_model <- rpart(formula = default ~ ., 
+                      data = creditsub, 
+                      method = "class")
+
+# Display the results
+rpart.plot(x = credit_model, yesno = 2, type = 0, extra = 0)
+```
+
+
+
+###train/test split
+For this exercise, you'll randomly split the German Credit Dataset into two pieces: a training set (80%) called credit_train and a test set (20%) that we will call credit_test. We'll use these two sets throughout the chapter.
+```{r}
+# Total number of rows in the credit data frame
+n <- nrow(credit)
+
+# Number of rows for the training set (80% of the dataset)
+n_train <- round(0.8 * n) 
+
+# Create a vector of indices which is an 80% random sample. sample(data,size)
+set.seed(123)
+train_indices <- sample(1:n, n_train)
+
+# Subset the credit data frame to training indices only
+credit_train <- credit[train_indices, ]  
+  
+# Exclude the training indices to create the test set
+credit_test <- credit[-train_indices, ]  
+```
+
+
+###Train a classification tree model
+In this exercise, you will train a model on the newly created training set and print the model object to get a sense of the results.
+```{r}
+# Train the model (to predict 'default')
+credit_model <- rpart(formula = default ~ ., 
+                      data = credit_train, 
+                      method = "class")
+
+# Look at the model output                      
+print(credit_model)
+```
+
+
+There are several metrics to evaluate the performance of classification models
+1.Accuracy
+2.Confusion Matrix
+3.Log-Loss
+4.AUC
+
+###compute a confusion matrix
+Compute confusion matrix
+As discussed in the previous video, there are a number of different metrics by which you can measure the performance of a classification model. In this exercise, we will evaluate the performance of the model using test set classification error. A confusion matrix is a convenient way to examine the per-class error rates for all classes at once.
+
+The confusionMatrix() function from the caret package prints both the confusion matrix and a number of other useful classification metrics such as "Accuracy" (fraction of correctly classified instances).
+
+The caret package contains the confusionMatrix function
+```{r}
+library(caret)
+# Generate predicted classes using the model object
+class_prediction <- predict(object = credit_model,  
+                        newdata = credit_test,   
+                        type = "class")  
+                            
+# Calculate the confusion matrix for the test set
+confusionMatrix(data = class_prediction,       
+                reference = credit_test$default)  
+```
+
+
+Another aspect of performace measufe is that we want the resulting leafs to be as pure/homogeneous as possible. You can use gini index to measur eth puriy of the leafs
+
+###Compare models with a different splitting criterion, gini vs entropy
+Train two models that use a different splitting criterion and use the validation set to choose a "best" model from this group. To do this you'll use the parms argument of the rpart() function. This argument takes a named list that contains values of different parameters you can use to change how the model is trained. Set the parameter split to control the splitting criterion.
+
+using gini index vs information gain(entropy) as the splitting cretaria: http://www.learnbymarketing.com/481/decision-tree-flavors-gini-info-gain/
+```{r}
+# Train a gini-based model
+credit_model1 <- rpart(formula = default ~ ., 
+                       data = credit_train, 
+                       method = "class",
+                       parms = list(split = "gini"))
+
+# Train an information-based model
+credit_model2 <- rpart(formula = default ~ ., 
+                       data = credit_train, 
+                       method = "class",
+                       parms = list(split = "information"))
+
+# Generate predictions on the validation set using the gini model
+pred1 <- predict(object = credit_model1, 
+             newdata = credit_test,
+             type = "class")    
+
+# Generate predictions on the validation set using the information model
+pred2 <- predict(object = credit_model2, 
+             newdata = credit_test,
+             type = "class")
+
+# Compare classification error
+ce(actual = credit_test$default, 
+   predicted = pred1)
+ce(actual = credit_test$default, 
+   predicted = pred2)  
+```
+
+
+
+##Regression trees
+We use regression tree to predict continuous value of a variable, we use classification tree to predict categorical value of a variable
+
+Types of data
+1.Training set
+2.Validation set: tune hyperparameters and choose the best candidate model
+3.Test set: meant only to be used once, at the end of your pipeline, cannot be used to tune hyperparameters
+
+###Split the data
+These examples will use a subset of the Student Performance Dataset from UCI ML Dataset Repository:https://archive.ics.uci.edu/ml/datasets/Student+Performance
+The goal of this exercise is to predict a student's final Mathematics grade based on the following variables: sex, age, address, studytime (weekly study time), schoolsup (extra educational support), famsup (family educational support), paid (extra paid classes within the course subject) and absences.
+The response is final_grade (numeric: from 0 to 20, output target).
+After initial exploration, split the data into training, validation, and test sets. In this chapter, we will introduce the idea of a validation set, which can be used to select a "best" model from a set of competing models.
+In Chapter 1, we demonstrated a simple way to split the data into two pieces using the sample() function. In this exercise, we will take a slightly different approach to splitting the data that allows us to split the data into more than two parts (here, we want three: train, validation, test). We still use the sample() function, but instead of sampling the indices themselves, we will assign each row to either the training, validation or test sets according to a probability distribution.
+The dataset grade is already in your workspace.
+
+```{r}
+# Look at the data
+str(grade)
+ 
+# Set seed and create assignment
+set.seed(1)
+assignment <- sample(1:3, size = nrow(grade), prob = c(0.7,0.15,0.15), replace = TRUE)
+
+# Create a train, validation and tests from the original data frame 
+grade_train <- grade[assignment == 1, ]    # subset grade to training indices only
+grade_valid <- grade[assignment == 2, ]  # subset grade to validation indices only
+grade_test <- grade[assignment == 3, ]   # subset grade to test indices only
+```
+
+
+###Train a regression tree 
+In this exercise, we will use the grade_train dataset to fit a regression tree using rpart() and visualize it using rpart.plot(). A regression tree plot looks identical to a classification tree plot, with the exception that there will be numeric values in the leaf nodes instead of predicted classes.
+
+This is very similar to what we did previously in Chapter 1. When fitting a classification tree, we use method = "class", however, when fitting a regression tree, we need to set method = "anova". By default, the rpart() function will make an intelligent guess as to what the method value should be based on the data type of your response column, but it's recommened that you explictly set the method for reproducibility reasons (since the auto-guesser may change in the future).
+
+The grade_train training set is loaded into the workspace.
+```{r}
+# Train the model
+grade_model <- rpart(formula = final_grade ~ ., 
+                     data = grade_train, 
+                     method = "anova")
+
+# Look at the model output                      
+print(grade_model)
+
+# Plot the tree model
+rpart.plot(x = grade_model, yesno = 2, type = 0, extra = 0)
+```
+
+
+###evaluate the performance of a regression tree
+Predict the final grade for all students in the test set. The grade is on a 0-20 scale. Evaluate the model based on test set RMSE (Root Mean Squared Error). RMSE tells us approximately how far away our predictions are from the true values.
+```{r}
+# Generate predictions on a test set
+pred <- predict(object = grade_model,   # model object 
+                newdata =grade_test)  # test dataset
+
+# Compute the RMSE
+rmse(actual = grade_test$final_grade, 
+     predicted = pred)
+```
+
+
+###hyperparameters for a decision tree
+hyperparameters cannot be learned by fitting the models. You shoud set hyperparameters before training the model. Important hyperparameters for a tree:
+1.Minsplit: minimum number of data points required to attempt a split
+2.cp: complexity parameter: a penalty term for tree size. the smaller the cp, the more complex the tree will be
+3.maxdepth: depth of a decision tree, maximum number of nodes between a leaf node and root node
+
+Tuning the model
+Tune (or "trim") the model using the prune() function by finding the best "CP" value (CP stands for "Complexity Parameter").
+```{r}
+# Plot the "CP Table"
+plotcp(grade_model)
+
+# Print the "CP Table"
+print(grade_model$cptable)
+
+# Retrieve optimal cp value based on cross-validated error
+opt_index <- which.min(grade_model$cptable[, "xerror"])
+cp_opt <- grade_model$cptable[opt_index, "CP"]
+
+# Prune the model (to optimized cp value)
+grade_model_opt <- prune(tree = grade_model, cp = cp_opt)
+                          
+# Plot the optimized model
+rpart.plot(x = grade_model_opt, yesno = 2, type = 0, extra = 0)
+```
+
+
+Grid search: a brute force search of all combination of model hyperparameters(each combination will give a slightly different model), to return the best combination of model hyperparameters.
+You need to choose a performance matrics to evaluate the best-performing model
+
+Generate a grid of hyperparameter values
+Use expand.grid() to generate a grid of maxdepth and minsplit values.
+```{r}
+# Establish a list of possible values for minsplit and maxdepth
+minsplit <- seq(1, 4, 1)
+maxdepth <- seq(1, 6, 1)
+
+# Create a data frame containing all combinations 
+hyper_grid <- expand.grid(minsplit = minsplit, maxdepth = maxdepth)
+
+# Check out the grid
+head(hyper_grid)
+
+# Print the number of grid combinations
+nrow(hyper_grid)
+```
+
+
+Generate a grid of models
+In this exercise, we will write a simple loop to train a "grid" of models and store the models in a list called grade_models. R users who are familiar with the apply functions in R could think about how this loop could be easily converted into a function applied to a list as an extra-credit thought experiment.
+```{r}
+# Number of potential models in the grid
+num_models <- nrow(hyper_grid)
+
+# Create an empty list to store models
+grade_models <- list()
+
+# Write a loop over the rows of hyper_grid to train the grid of models
+for (i in 1:num_models) {
+
+    # Get minsplit, maxdepth values at row i
+    minsplit <- hyper_grid$minsplit[i]
+    maxdepth <- hyper_grid$maxdepth[i]
+
+    # Train a model and store in the list
+    grade_models[[i]] <- rpart(formula = final_grade ~ ., 
+                               data = grade_train, 
+                               method = "anova",
+                               minsplit = minsplit,
+                               maxdepth = maxdepth)
+}
+```
+
+Evaluate the grid
+Earlier in the chapter we split the dataset into three parts: training, validation and test.
+
+A dataset that is not used in training is sometimes referred to as a "holdout" set. A holdout set is used to estimate model performance and although both validation and test sets are considered to be holdout data, there is a key difference:
+
+Just like a test set, a validation set is used to evaluate the performance of a model. The difference is that a validation set is specifically used to compare the performance of a group of models with the goal of choosing a "best model" from the group. All the models in a group are evaluated on the same validation set and the model with the best performance is considered to be the winner.
+Once you have the best model, a final estimate of performance is computed on the test set.
+A test set should only ever be used to estimate model performance and should not be used in model selection. Typically if you use a test set more than once, you are probably doing something wrong.
+```{r}
+# Number of potential models in the grid
+num_models <- length(grade_models)
+
+# Create an empty vector to store RMSE values
+rmse_values <- c()
+
+# Write a loop over the models to compute validation RMSE
+for (i in 1:num_models) {
+
+    # Retrieve the i^th model from the list
+    model <- grade_models[[i]]
+    
+    # Generate predictions on grade_valid 
+    pred <- predict(object = model,
+                    newdata = grade_valid)
+    
+    # Compute validation RMSE and add to the 
+    rmse_values[i] <- rmse(actual = grade_valid$final_grade, 
+                           predicted = pred)
+}
+
+# Identify the model with smallest validation set RMSE
+best_model <- grade_models[[which.min(rmse_values)]]
+
+# Print the model paramters of the best model. All model parameters are stored in "control"
+best_model$control
+
+# Compute test set RMSE on best_model
+pred <- predict(object = best_model,
+                newdata = grade_test)
+rmse(actual = grade_test$final_grade, 
+     predicted = pred)
+```
+
+
+
+
+##bagged trees
+
+bagged trees combine multiple trees to reduce variance and increase accuracy. Big variance is a main issue for deciision tree
+
+Train a bagged tree model
+Let's start by training a bagged tree model. You'll be using the bagging() function from the ipred package. The number of bagged trees can be specified using the nbagg parameter, but here we will use the default (25).
+
+If we want to estimate the model's accuracy using the "out-of-bag" (OOB) samples, we can set the the coob parameter to TRUE. The OOB samples are the training obsevations that were not selected into the bootstrapped sample (used in training). Since these observations were not used in training, we can use them instead to evaluate the accuracy of the model (done automatically inside the bagging() function)
+
+Here we will used the credit dataset, note this is a classification tree, not a regression tree
+```{r}
+# Bagging is a randomized model, so let's set a seed (123) for reproducibility
+set.seed(123)
+
+# Train a bagged model. Note the bagging here works exactly the same as predict() function we previously used for single tree
+credit_model <- bagging(formula = default ~ ., 
+                        data = credit_train,
+                        coob = TRUE)
+
+# Print the model
+print(credit_model)
+```
+
+
+Evaluate the performance of bagged tree models
+ROC curve is used to compare the performance across different classifiers. AUC is used to quantify the performance of a model. AUC of 0.5 means the classifier is no better than random chance. AUC = 0 means it classifies everything wrong, AUC = 1 means it classify everything correctly.
+```{r}
+# Generate predicted classes using the model object, here is a single classification tree instead of a bagged tree.
+class_prediction <- predict(object = credit_model,    
+                            newdata = credit_test,  
+                            type = "class")  # return classification labels
+
+# Print the predicted classes
+print(class_prediction)
+
+# Calculate the confusion matrix for the test set
+confusionMatrix(data = class_prediction,       
+                reference = credit_test$default)  
+```
+
+
+
+Prediction and confusion matrix
+As you saw in the video, a confusion matrix is a very useful tool for examining all possible outcomes of your predictions (true positive, true negative, false positive, false negative).
+
+In this exercise, you will predict those who will default using bagged trees. You will also create the confusion matrix using the confusionMatrix() function from the caret package.
+
+It's always good to take a look at the output using the print() function.
+```{r}
+
+```
+
