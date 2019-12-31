@@ -1,0 +1,75 @@
+---
+title: "data_processing"
+author: "Weihan Liu"
+date: "30/12/2019"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+```
+
+
+#process the test data: all gene on chr7 for heatological cancer 
+read in the csv file that contains all hematological cancer related columnes for all genes on chr 7
+```{r}
+chr7_hema <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Chr7_hema_cancer.csv", stringsAsFactors = FALSE)
+glimpse(chr7_hema)
+
+#read in the csv file that contains all CGC tier information
+CGC_all <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CGC_complete_list.csv",stringsAsFactors = FALSE)
+glimpse(CGC_all)
+```
+
+clean the CGC_all data to contain only chr7 genes
+```{r}
+CGC_chr7 <- CGC_all %>% filter(startsWith(CGC_all$Genome.Location,"7"))
+head(CGC_chr7)
+
+#retain only the useful columns
+CGC_chr7 <- CGC_chr7 %>%
+        select(Gene,Tier,Tumour.Types.Somatic.,Tumour.Types.Germline.,Role.in.Cancer,Mutation.Types)
+glimpse(CGC_chr7)
+```
+
+Join the CGC_chr7 data with your test data
+```{r}
+chr7_hema <- full_join(chr7_hema,CGC_chr7, by = "Gene")
+
+#format the table:delete the original CGC tier column and rename the "Tier" column from the joined CGC data into CGC Tier column
+chr7_hema <- chr7_hema %>% select(-CGC.tier)
+chr7_hema <- chr7_hema %>% rename(CGC_tier = Tier)
+glimpse(chr7_hema)
+#convert all the NAs in the CGC_tier column to 0
+chr7_hema$CGC_tier[is.na(chr7_hema$CGC_tier)] <- 0
+```
+
+
+Read in the TSGene 2.0 tumor suppressor data
+```{r}
+TSgene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/TSGene_all.csv",stringsAsFactors = FALSE)
+glimpse(TSgene)
+
+#pick out the chr7 data
+TSgene_chr7 <- TSgene %>% filter(Chromosome == "7")
+glimpse(TSgene_chr7)
+
+#clean the TSgene table to retain useful informations
+TSgene_chr7_clean <- TSgene_chr7 %>%
+        mutate(TSgene = 1) %>%
+        select(-c("GeneID","Alias","Links","Chromosome","Description","Cytoband")) %>%
+        rename(Gene = GeneSymbol)
+glimpse(TSgene_chr7_clean)
+```
+
+Join the test data chr7_hema with TSgene data
+```{r}
+chr7_hema <- full_join(chr7_hema,TSgene_chr7_clean,by = "Gene")
+#convert all the NAs in the TSgene column to 0
+chr7_hema$TSgene[is.na(chr7_hema$TSgene)] <- 0
+glimpse(chr7_hema)
+#get rid of the old TSGene status column
+chr7_hema <- chr7_hema %>% select(-TS.status.by.TSGene)
+```
+

@@ -110,48 +110,48 @@ Sabb15.KBM7.cs:
     Paper: Sabatini 2015
     Cell line: KBM7
     Cancer Type: CML
-    Data Type: CRISPR Score
+    Data Type: CRISPRKo Score
 
 Sabb15.KBM7.fdr:
     Paper: Sabatini 2015
     Cell line: KBM7
     Cancer Type: CML
-    Data Type: false discovery rate based on CRISPR Score
+    Data Type: false discovery rate based on CRISPRKo Score
 Sabb15.K562.cs:
     Paper: Sabatini 2015
     Cell line: K562
     Cancer Type: CML
-    Data Type: CRISPR Score
+    Data Type: CRISPRKo Score
  
 Sabb15.K562.fdr:
     Paper: Sabatini 2015
     Cell line: K562
     Cancer Type: CML
-    Data Type: false discovery rate based on CRISPR Score
+    Data Type: false discovery rate based on CRISPRKo Score
 
 Sabb15.Jiyoye.cs:
     Paper: Sabatini 2015
     Cell line: Jiyoye
     Cancer Type: Burkitt's Lymphoma
-    Data Type: CRISPR Score
+    Data Type: CRISPRKo Score
 
 Sabb15.Jiyoye.fdr:
     Paper: Sabatini 2015
     Cell line: Jiyoye
     Cancer Type: Burkitt's Lymphoma
-    Data Type: false discovery rate based on CRISPR Score
+    Data Type: false discovery rate based on CRISPRKo Score
 
 Sabb15.Raji.cs:
     Paper: Sabatini 2015
     Cell line: Raji
     Cancer Type: Burkitt's Lymphoma
-    Data Type: CRISPR Score
+    Data Type: CRISPRKo Score
 
 Sabb15.Raji.fdr:
     Paper: Sabatini 2015
     Cell line: Raji
     Cancer Type: Burkitt's Lymphoma
-    Data Type: false discovery rate based on CRISPR Score
+    Data Type: false discovery rate based on CRISPRKo Score
 
 Sabb17.EOL:
     Paper: Sabatini 2017
@@ -259,3 +259,8 @@ Weis16.csi.avg:
     Cell line: K562
     Cancer Type: CML
     Data Type: CRISPRi Score
+
+CGC tier:
+    Tier status by cancer gene census(include both oncogene and tumor suppressor genes)
+        Tier1: well documented cancer-related activities
+        Tier2: less extensively documented cancer related activities, many new targets
