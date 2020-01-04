@@ -73,3 +73,127 @@ glimpse(chr7_hema)
 chr7_hema <- chr7_hema %>% select(-TS.status.by.TSGene)
 ```
 
+
+Training data preprocessing
+
+1.use all protei-coding genes on chromosome 5 for training and validating dataset.
+
+The list of genes I obtained contains both coding and non-coding genes, so the first task is to get rid of the non-coding genes
+```{r}
+#read in the chr5 data set
+chr5_train <- read.csv("/Users/weihan/Desktop/Research/Jeremy_TS_ML/tmp/chr5_master_list_train.csv", stringsAsFactors = FALSE)
+glimpse(chr5_train)
+```
+
+Obrain coding vs non-coding annotations from biomart
+```{r}
+#covert the current set of chromosome 5 genes to a vector
+genes <- as.vector(chr5_train$Gene)
+#load biomaRt package
+require(biomaRt)
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "useast.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+annotLookup <- getBM(
+  mart = mart,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = genes,
+  uniqueRows=TRUE)
+
+head(annotLookup)
+
+#retain only the protein coding genes
+annotLookup <- annotLookup %>% filter(gene_biotype == "protein_coding")
+#now we have 913 genes left, which is about the number of protein coding genes on chromosome 5
+
+#create a dataframe that only contains a single column with all the protein coding genes' names on chromosome 5
+pc_chr5_genes <- annotLookup$hgnc_symbol
+pc_chr5_genes <- as.data.frame(pc_chr5_genes)
+pc_chr5_genes$pc_chr5_genes <- as.character(pc_chr5_genes$pc_chr5_genes)
+
+pc_chr5_genes <- pc_chr5_genes %>% rename(
+        Gene = pc_chr5_genes
+)
+
+head(pc_chr5_genes)
+
+#join this dataframe with chr5_train dataframe to filter out the non-protein coding genes in the chr5_train dataframe
+chr5_train  <- chr5_train %>% inner_join(pc_chr5_genes, by = "Gene")
+summary(chr5_train)
+```
+
+
+Now, let's add some other variables, specifically:
+1).Whether this gene is cancer related by CGC(categorical variable, 0 or 1)
+2).Whether this gene is a tumor suppressor gene by TSGene(0 or 1)
+
+1)
+clean the CGC_all data to contain only chr7 genes
+```{r}
+CGC_chr5 <- CGC_all %>% filter(startsWith(CGC_all$Genome.Location,"5"))
+head(CGC_chr5)
+
+#retain only the useful columns
+CGC_chr5 <- CGC_chr5 %>%
+        dplyr::select(Gene,Tier)
+glimpse(CGC_chr5)
+```
+
+Join the CGC_chr7 data with your test data
+```{r}
+chr5_train <- full_join(chr5_train,CGC_chr5, by = "Gene")
+
+chr5_train <- chr5_train %>% rename(
+        CGC_Tier = Tier
+)
+
+glimpse(chr5_train)
+#convert all the NAs in the CGC_tier column to 0
+chr5_train$CGC_Tier[is.na(chr5_train$CGC_Tier)] <- 0
+#convert all 2 to 1
+chr5_train$CGC_Tier[chr5_train$CGC_Tier == 2] <- 1
+```
+
+
+Create the chr5 TSGene data table
+```{r}
+#pick out the chr5 data
+TSgene_chr5 <- TSgene %>% filter(Chromosome == "5")
+glimpse(TSgene_chr5)
+
+#clean the TSgene table to retain useful informations
+TSgene_chr5_clean <- TSgene_chr5 %>%
+        mutate(TSgene = 1) %>%
+        filter(GeneType == "protein-coding") %>%
+        dplyr::select(-c("GeneID","Alias","Links","Chromosome","Description","Cytoband","GeneType")) %>%
+        rename(Gene = GeneSymbol)
+glimpse(TSgene_chr5_clean)
+```
+
+Join the test data chr7_hema with TSgene data
+```{r}
+chr5_train <- full_join(chr5_train,TSgene_chr5_clean,by = "Gene")
+#convert all the NAs in the TSgene column to 0
+chr5_train$TSgene[is.na(chr5_train$TSgene)] <- 0
+glimpse(chr5_train)
+
+```
+
+Pick out the TS genes on tumor suppressor identified by TSgene and take a closer look
+```{r}
+chr5_TS <- chr5_train %>% filter(TSgene == 1)
+glimpse(chr5_TS)
+View(summary(chr5_TS))
+```
+
+
+Add the "ground truth" column to the chr5 training data, we use the elledge 2013. ranking of TS as our ground truth
+```{r}
+
+```
+
+
