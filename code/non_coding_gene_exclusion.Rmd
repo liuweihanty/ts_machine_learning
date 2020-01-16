@@ -1,0 +1,117 @@
+---
+title: "Exclude Non-coding Gene"
+author: "Shirley Zhou"
+date: "1/15/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r read gwide (train) set}
+gwide <- read.csv("../data/Genomewide_master_list.csv", stringsAsFactors = FALSE)
+drop <- c('description','other_designations')
+gwide <- gwide[,!(names(gwide) %in% drop)]
+summary(gwide)
+```
+
+```{r read chr7 (test) set}
+chr7 <- read.csv("../data/Chr7_master_list.csv", stringsAsFactors = FALSE)
+chr7 <- chr7[,!(names(chr7) %in% c('X'))]
+summary(chr7)
+```
+
+
+Obtain coding vs non-coding annotations from biomart (credit: Weihan Liu)
+```{r exclude non protein-coding gene in train set}
+#covert the current set of genes to a vector
+gwide.genes <- as.vector(gwide$Gene)
+
+#load biomaRt package
+require(biomaRt)
+library(biomaRt)
+### the part below is different from weihan's code
+mart.hs <- useMart("ensembl", "hsapiens_gene_ensembl")
+###
+annotLookup <- getBM(
+  mart = mart.hs,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = gwide.genes,
+  uniqueRows=TRUE)
+
+head(annotLookup)
+
+#retain only the protein coding genes
+annotLookup <- annotLookup %>% filter(gene_biotype == "protein_coding")
+
+#create a dataframe that only contains a single column with all the protein coding genes' names genome-wide
+pc_genes <- annotLookup$hgnc_symbol
+pc_genes <- as.data.frame(pc_genes)
+#conver the gene name column from factor to characters
+pc_genes$pc_genes <- as.character(pc_genes$pc_genes)
+pc_genes <- pc_genes %>% rename(
+        Gene = pc_genes
+)
+
+head(pc_genes)
+
+#join this dataframe with genome wide hematoligical cancer dataframe to filter out the non-protein coding genes in the gwide_hema dataframe
+gwide  <- gwide %>% inner_join(pc_genes, by = "Gene")
+summary(gwide)
+```
+Based on biomaRt analysis, 22067 out of 61477 genes are filtered out as protein-coding genes in genomewide set. 
+
+```{r exclude non protein-coding gene in test set}
+
+#covert the current set of genes to a vector
+chr7.gene <- as.vector(chr7$Gene)
+
+annotLookup <- getBM(
+  mart = mart.hs,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = chr7.gene,
+  uniqueRows=TRUE)
+
+head(annotLookup)
+
+#retain only the protein coding genes
+annotLookup <- annotLookup %>% filter(gene_biotype == "protein_coding")
+#now we have ~21000 genes left, which is about the number of protein coding genes genome-wide
+
+#create a dataframe that only contains a single column with all the protein coding genes' names genome-wide
+pc_genes <- annotLookup$hgnc_symbol
+pc_genes <- as.data.frame(pc_genes)
+#conver the gene name column from factor to characters
+pc_genes$pc_genes <- as.character(pc_genes$pc_genes)
+pc_genes <- pc_genes %>% rename(
+        Gene = pc_genes
+)
+
+head(pc_genes)
+
+#join this dataframe with genome wide hematoligical cancer dataframe to filter out the non-protein coding genes in the gwide_hema dataframe
+chr7  <- chr7 %>% inner_join(pc_genes, by = "Gene")
+summary(chr7)
+```
+Based on biomaRt analysis, 841 out of 852 genes are filtered out as protein-coding genes in chr7.
+
+```{r export coding genes only datasets}
+write.csv(gwide, "../data/gwide_hema_classification/Genomewide_coding.csv")
+write.csv(chr7, "../data/gwide_hema_classification/Chr7_coding.csv")
+```
