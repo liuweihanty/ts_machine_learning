@@ -1,0 +1,164 @@
+---
+title: "classification_train_test_process"
+author: "Weihan Liu"
+date: "12/02/2020"
+output: html_document
+---
+
+Table of contents:
+1.data cleaning: Filter columns based on NA and 0 values and perform KNN imputation
+2.Create train vs test data
+
+
+#1 data cleaning
+##Load in data. This table contains screen results from hematological cancers, and only protein coding genes
+```{r}
+#library(tidyselect)
+#library(data.table)
+gwide <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide.csv", stringsAsFactors = FALSE)
+
+#drop the column 
+#1)Weissman2014.CRISPRi.Growth.phenotype..mean.of.top.3.gammas. because most of the values are underpowered to detect tumor suppressors in CRISPRi screen, 
+#2)HSC.logCPM column
+#3)all the threshold columns, these are columns containing 0 opr 1s based on our judgement of whether they pass the thrshold
+
+gwide <- gwide %>% 
+        select(-c("HSC.logCPM","Weissman2014.CRISPRi.Growth.phenotype..mean.of.top.3.gammas.","X","X.1","X.2","GeneID"))
+                    
+#get rid of all the threshold columns
+ 
+threshold_vars <- vars_select(colnames(gwide),ends_with("threshold"))
+gwide <- gwide %>% select(-threshold_vars) %>% glimpse()
+
+#remove all duplicated values in gwide.unique() function remove the rows whose all columns are identical(because I didn't specify "by =" here, so the removal of duplicated rows are based on all columns)
+gwide <- unique(gwide)
+unique(gwide,by = "Gene") 
+#back-up original data
+gwide_original <- gwide
+#there are still 22 some duplicated genes by gene name(but some other columns differ, so they didn't get removed in the previous command, so let's do another round of removing duplicate by Gene name
+gwide <- gwide[!duplicated(gwide$Gene),]
+gwide_original <- gwide
+glimpse(gwide)
+```
+
+##add TSgene ground truth column
+```{r}
+#clean the tsgene dataframe
+tsgene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/TSGene_all.csv",stringsAsFactors = FALSE)
+head(tsgene)
+table(tsgene$GeneType)
+tsgene <- tsgene %>% filter(GeneType == "protein-coding") %>% 
+        select("GeneSymbol") %>%
+        rename("Gene" = "GeneSymbol") %>%
+        mutate("TS_status" = 1)
+#join tsgene and the gwide dataframe
+
+gwide <- full_join(gwide,tsgene,by = "Gene")
+gwide$TS_status[is.na(gwide$TS_status)] <- 0 #replace all NAs in TS_status column with 0s
+```
+
+##add Elledge 2013 data columns to enrich training data
+```{r}
+library(readxl)
+elledge <- read_xlsx("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/elledge2013supplement.xlsx")
+elledge <- elledge %>% select(c("Gene","LOF/Silent*","Splicing/Benign*","MissDamaging/Benign*"))
+
+gwide <- full_join(gwide, elledge, by = "Gene")
+
+gwide <- gwide %>% rename(LOF_Silent = `LOF/Silent*`,
+                          Splicing_Benign = `Splicing/Benign*`,
+                          MissDamaging_Benign = `MissDamaging/Benign*`)
+glimpse(gwide)
+```
+
+##Drop all the p value columns
+```{r}
+gwide <- gwide %>% select(-c(
+        "Chen2019.pos.p.value",
+        "Chen2019.pos.fdr",
+        "Chen2019.pos.rank",
+        "Doench2018.Average.nlog.p.values.",
+        "Elledge2013.TUSON_p_value_TSG",
+        "Elledge2013.TUSON_q_value_TSG",
+        "Elledge2019.HMEC.Combined.pvalue.drop",
+        "Elledge2019.HMEC.FDR.drop",
+        "Elledge2019.HPNE.Combined.pvalue.drop",
+        "Elledge2019.HPNE.FDR.drop",
+        "Sabbatini2015.KBM7.adjusted.p.value",
+        "Sabbatini2015.K562.adjusted.p.value",
+        "Sabbatini2015.Jiyoye.adjusted.p.value",
+        "Sabbatini2015.Raji.adjusted.p.value",
+        "Wallace2016.DEseq2.P.Value",
+        "Rep1_2.Mann.Whitney.p.value",
+        "Rep1_2.Mann.Whitney.p.value.1"
+))
+
+glimpse(gwide)
+```
+
+
+
+##Check NA and 0 status for each column and get rid of outliers
+```{r}
+#rank NA percentage by column
+sapply(gwide, function(x) sum(is.na(x))/length(x)) %>% 
+        sort(decreasing = TRUE)
+#get ride of the Wallace2016.DEseq2.Log2.Fold.Change too many NA values(over 90 %)
+gwide <- gwide %>% 
+        select(-"Wallace2016.DEseq2.Log2.Fold.Change")
+
+#0 values
+sapply(gwide, function(x) sum(x == 0,na.rm = TRUE)/length(x)) %>%
+        sort(decreasing = TRUE)
+
+#get rid of Sabbatini2017.MV412 , too many 0s(> 99%)
+gwide <- gwide %>% select(-"Sabbatini2017.MV412")
+glimpse(gwide)
+#save the file in corresponding github folder
+write.csv(gwide,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm.csv")
+
+```
+
+
+##knn imputation
+```{r}
+library(data.table)
+library(impute)
+
+gene_chr <- gwide[c("Gene","chromosome")]
+
+#remove rownames from gwide
+rownames(gwide) <- c()
+gwide_knn <- gwide %>% column_to_rownames(var = "Gene") %>% select(-"chromosome") 
+
+gwide_knn <- impute.knn(as.matrix(gwide_knn[ ,!names(gwide_knn) %in% "TS_status"]),k = 10, rowmax = 1, colmax = 1, maxp = 1500, rng.seed=362436069)
+
+# perform knn imputation.
+anyNA(gwide_knn)
+gwide_knn <- as.data.frame(gwide_knn$data)
+
+#attach back the gene and chromosome columns
+gwide_knn <- gwide_knn %>% rownames_to_column(var = "Gene") %>%
+        inner_join(gene_chr, by = "Gene") 
+#attach back the TS_status column
+gene_ts_status <- gwide[(c("Gene","TS_status"))]
+gwide_knn <- gwide_knn %>% inner_join(gene_ts_status, by = "Gene")
+
+glimpse(gwide_knn)
+
+#save the knn_imputated file 
+write.csv(gwide_knn,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn.csv")
+```
+
+
+
+
+So now we have two versions of file
+1).only duplicated removed: gwide
+2) duplicated removed + knn imputated : gwide_knn
+
+Next, Designing the random forest algorithm
+
+
+
+
