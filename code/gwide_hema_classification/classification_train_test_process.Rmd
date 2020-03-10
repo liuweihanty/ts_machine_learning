@@ -144,6 +144,9 @@ gwide_knn <- gwide_knn %>% rownames_to_column(var = "Gene") %>%
 gene_ts_status <- gwide[(c("Gene","TS_status"))]
 gwide_knn <- gwide_knn %>% inner_join(gene_ts_status, by = "Gene")
 
+#we have some NA values in the TS_status column, which are genes that don't have TS vs Non TS annotation, let's replace them with 0
+gwide_knn$TS_status[is.na(gwide_knn$TS_status)] <- 0
+
 glimpse(gwide_knn)
 
 #save the knn_imputated file 
