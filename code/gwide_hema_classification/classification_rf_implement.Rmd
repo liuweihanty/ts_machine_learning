@@ -23,9 +23,10 @@ Pseudo code for regression random forest implementation:
 ##Install relevant packages
 ```{r}
 library(randomForest)  
-library(e1071)  
 library(caret)  
 library(ggplot2) 
+library(dplyr)
+library(tibble)
 ```
 
 
@@ -33,6 +34,7 @@ library(ggplot2)
 ```{r}
 gwide <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm.csv")  #duplicated removed
 gwide_knn <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn.csv") 
+
 ```
 
 
@@ -66,9 +68,12 @@ gwide_train_balance <- as.data.frame(gwide_train_balance)
 gwide_train_balance <- rbind(gwide_train_balance,filter(gwide_train,TS_status == 1))
 str(gwide_train_balance)
 
+gwide_train_balance$TS_status <- as.factor(gwide_train_balance$TS_status)
+
 #creating testing set, which will be all genes on chromosome 7
 gwide_test <- gwide_knn %>%
         filter(chromosome == 7)
+gwide_test$TS_status <- as.factor(gwide_test$TS_status)
 glimpse(gwide_test)
 
 ```
@@ -99,7 +104,7 @@ for (i in 1:nrow(hyper_grid)) {
 
     # Train a Random Forest model
     rf_model <- randomForest(formula = TS_status ~ ., 
-                          data = select(gwide_train_balance,-c("chromosome","Gene")),
+                          data = select(gwide_train_balance,-c("chromosome")),
                           mtry = hyper_grid$mtry[i],
                           nodesize = hyper_grid$nodesize[i],
                           sampsize = hyper_grid$sampsize[i])
@@ -120,7 +125,7 @@ print(hyper_grid[opt_i,])
 set.seed(22)
 #taking the 
 rf = randomForest(TS_status ~ .,  
-                   data = select(gwide_train_balance,-c("chromosome","Gene")),importance = TRUE,mtry = 8,nodesize = 5,sampsize = 0.8*nrow(gwide_train_balance))
+                   data = select(gwide_train_balance,-c("chromosome")),importance = TRUE,mtry = 4,nodesize = 9,sampsize = 0.8*nrow(gwide_train_balance))
 plot(rf) 
 print(rf)
 varImpPlot(rf)
@@ -203,7 +208,6 @@ auc(actual = ifelse(gwide_test$TS_status == 1, 1, 0),
 
 
 
-
 Use the label from Cancer Gene Census as the ground truth instead of the TSGene
 Read in the data and switch the ground truth column
 ```{r}
@@ -213,17 +217,21 @@ CGC_TS <- CGC_TS$Gene.Symbol
 CGC_TS <- as.data.frame(CGC_TS)
 CGC_TS <- CGC_TS %>% mutate("TS_status" = 1) %>% rename(Gene = CGC_TS)
 
+gwide_knn <- rownames_to_column(gwide_knn, var = "Gene")
 #switch the ground truth column from TSGene to CGC
 gwide_knn_CGC <- gwide_knn %>% select(-TS_status) %>%
         full_join(CGC_TS, by = "Gene")
 #replace all the NAs in the TS_status columns with 0s
 gwide_knn_CGC$TS_status[is.na(gwide_knn_CGC$TS_status)] <- 0
+
+glimpse(gwide_knn_CGC)
 ```
 
 
 Split the training vs testing data
 ```{r}
 #training(unbalanced)
+
 gwide_train_CGC <- gwide_knn_CGC %>%
         filter(chromosome != 7 & chromosome != "MT")
 
@@ -237,13 +245,93 @@ gwide_train_balance_CGC <- filter(gwide_train_CGC,TS_status == 0) %>%
 
 gwide_train_balance_CGC <- as.data.frame(gwide_train_balance_CGC)
 gwide_train_balance_CGC <- rbind(gwide_train_balance_CGC,filter(gwide_train_CGC,TS_status == 1))
-str(gwide_train_balance_CGC)
 
+gwide_train_balance_CGC$TS_status <- as.factor(gwide_train_balance_CGC$TS_status)
+str(gwide_train_balance_CGC)
 #creating testing set, which will be all genes on chromosome 7
 gwide_test_CGC <- gwide_knn_CGC %>%
         filter(chromosome == 7)
+gwide_test_CGC$TS_status <- as.factor(gwide_test_CGC$TS_status)
 glimpse(gwide_test_CGC)
+
+
 ```
 
 
+training data: gwide_train_balance_CGC
+testing data: gwide_test_CGC
 
+##Hyperparameter tuning
+```{r}
+#' @ntree: number of trees, default is 500
+#' @mtry: number of variables randomly sampled as candidates at each split
+#' @samplesize: number of samples(rows) to train on, default = 63.2%
+#' @nodesize: minimum size(# of samples) pf the terminal nodes, if small, allows deeper and more complex tree
+#' @maxnodes: maximum number of terminal nodes
+gwide_train_balance_CGC <- column_to_rownames(gwide_train_balance_CGC,var = "Gene") 
+#grid search
+# Establish a list of possible values for mtry, nodesize and sampsize
+mtry1 <- seq(4, ncol(gwide_train_balance_CGC) * 0.8, 2)
+nodesize1 <- seq(3, 10, 2)
+sampsize1 <- nrow(gwide_train_balance_CGC) * c(0.7,0.8)
+
+# Create a data frame containing all combinations 
+hyper_grid1 <- expand.grid(mtry1 = mtry1, nodesize1 = nodesize1, sampsize1 = sampsize1)
+
+# Create an empty vector to store OOB error values
+oob_err1 <- c()
+
+# Write a loop over the rows of hyper_grid to train the grid of models
+for (i in 1:nrow(hyper_grid1)) {
+
+    # Train a Random Forest model
+    rf_model1 <- randomForest(formula = TS_status ~ ., 
+                          data = select(gwide_train_balance_CGC,-c("chromosome")),
+                          mtry1 = hyper_grid1$mtry1[i],
+                          nodesize1 = hyper_grid1$nodesize1[i],
+                          sampsize1 = hyper_grid1$sampsize1[i])
+                          
+    # Store OOB error for the model                      
+    oob_err1[i] <- rf_model1$err.rate[nrow(rf_model1$err.rate), "OOB"]
+}
+
+# Identify optimal set of hyperparmeters based on OOB error
+opt_i <- which.min(oob_err)
+print(hyper_grid[opt_i,])
+```
+
+
+## fit of random forest model using the optimal hyperparameters
+```{r, fig.height=4, fig.width=8}
+set.seed(22)
+
+#taking the 
+rf1 = randomForest(TS_status ~ .,  
+                   data = select(gwide_train_balance_CGC,-c("chromosome")),importance = TRUE,mtry = 8,nodesize = 3,sampsize = nrow(gwide_train_balance_CGC))
+plot(rf1) 
+print(rf1)
+varImpPlot(rf1)
+
+```
+
+##Predict the test set
+```{r}
+# Generate predicted classes using the model object
+gwide_test_CGC$hits<- predict(object = rf1,newdata = gwide_test_CGC,type = "class") 
+
+#extract the predicted TS genes in the test set
+pred_gene <- filter(gwide_test_CGC, hits == 1)["Gene"]
+
+
+#overlapping between CGC labeled TS and the predicted TS
+high_conf_hits <- as.data.frame(pred_gene$Gene[pred_gene$Gene %in% CGC_TS$Gene])
+high_conf_hits
+
+#overlapping between Jeremy's 96 genes with the predicted TS
+jeremy_genes_overlap <- as.data.frame(pred_gene$Gene[pred_gene$Gene %in% jeremy_genes$Gene])
+jeremy_genes_overlap
+#29 overlaps
+```
+
+
+Next, we will include some columns from TS specific screens(CRISPRa or over expression screens) that we initially omitted due to QC
