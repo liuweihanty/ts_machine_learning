@@ -1,0 +1,158 @@
+---
+title: "regression_RF_implement"
+author: "Weihan Liu"
+date: "25/03/2020"
+output: html_document
+---
+
+```{r}
+library(rsample)      # data splitting 
+library(randomForest) # basic implementation
+library(ranger)       # a faster implementation of randomForest
+library(caret)        # an aggregator package for performing many machine learning models
+library(h2o)   
+```
+
+
+We inherit the training and testing data split from the classification data preprocessing
+manipulate the training and testing data, we will use the Elledge Lasso probability as our ground truth column. THE CGC TS status will be one of our predictor column
+```{r}
+#clean testing data
+#delete the columns from Elledge 2013, except the lasso prob column, which will be used as ground truth column.We delete all the other columns from Elledge 2013 because they are correlated with
+gwide_test_CGC_reg <- select(gwide_test_CGC,-c("LOF_Silent","Splicing_Benign","MissDamaging_Benign","hits"))
+ 
+#clean training data
+gwide_train_balanced_CGC_reg <- select(gwide_train_balance_CGC,-c("LOF_Silent","Splicing_Benign","MissDamaging_Benign"))
+```
+
+Hyperparameter tuning(using ranger)
+```{r}
+#construct hyperparameter grid
+hyper_grid_reg <- expand.grid(
+  mtry <- seq(2, ncol(gwide_train_balanced_CGC_reg) * 0.8, 2),
+  node_size  = seq(3, 9, by = 2),
+  sampe_size = c(0.6,0.7,0.8),
+  OOB_RMSE   = 0
+)
+
+# total number of combinations
+nrow(hyper_grid_reg)
+```
+
+Execute hyperparameter grid search
+```{r}
+
+for(i in 1:nrow(hyper_grid_reg)) {
+  
+  # train model
+  model <- ranger(
+    formula         = Elledge2013.TSG_Probability_LASSO ~ ., 
+    data            = select(gwide_train_balanced_CGC_reg,-"chromosome"), 
+    num.trees       = 500,
+    mtry            = hyper_grid_reg$mtry[i],
+    min.node.size   = hyper_grid_reg$node_size[i],
+    sample.fraction = hyper_grid_reg$sampe_size[i],
+    seed            = 123
+  )
+  
+  # add OOB error to grid
+  hyper_grid_reg$OOB_RMSE[i] <- sqrt(model$prediction.error)
+}
+
+c
+#check out the top hyperparameters
+hyper_grid_reg %>% 
+  dplyr::arrange(OOB_RMSE) %>%
+  head(20)
+
+#We can choose mtry = 8, nodesize = 9, sample size = 0.8, the resulting OOB_RMSE is 0.2770774
+```
+
+
+plot the distribution of the OOB_RMSE
+```{r}
+OOB_RMSE <- vector(mode = "numeric", length = 100)
+
+for(i in seq_along(OOB_RMSE)) {
+
+  optimal_ranger <- ranger(
+    formula         = Elledge2013.TSG_Probability_LASSO ~ ., 
+    data            = select(gwide_train_balanced_CGC_reg,-"chromosome"), 
+    num.trees       = 500,
+    mtry            = 8,
+    min.node.size   = 9,
+    sample.fraction = .8,
+    importance      = 'impurity'
+  )
+  
+  OOB_RMSE[i] <- sqrt(optimal_ranger$prediction.error)
+}
+
+hist(OOB_RMSE, breaks = 20)
+```
+
+Assess variable importance
+```{r}
+var_imp <- data.frame(optimal_ranger$variable.importance)
+var_imp <- rownames_to_column(var_imp,var = "variable")
+
+var_imp %>% 
+  dplyr::arrange(desc(var_imp$optimal_ranger.variable.importance)) %>%
+  dplyr::top_n(29) %>%
+  ggplot(aes(reorder(var_imp$variable, var_imp$optimal_ranger.variable.importance), var_imp$optimal_ranger.variable.importance)) +
+  geom_col() +
+  coord_flip() +
+  ggtitle("Top 25 important variables")
+
+
+```
+
+```{r,fig.height=4, fig.width=8}
+#Random Forest
+# rf_reg = randomForest(Elledge2013.TSG_Probability_LASSO ~ .,  
+#                    data = select(gwide_train_balanced_CGC_reg,-"chromosome"),importance = TRUE,mtry = 8,nodesize = 9,sampsize = nrow(gwide_train_balanced_CGC_reg))
+# plot(rf_reg) 
+# print(rf_reg)
+# varImpPlot(rf_reg)
+
+
+
+#ranger
+rf_reg_ranger <- ranger(
+    formula   = Elledge2013.TSG_Probability_LASSO ~ ., 
+    data      = select(gwide_train_balanced_CGC_reg,-"chromosome"), 
+    num.trees = 500,
+    min.node.size = 9,
+    mtry      = 8,
+    sample.fraction = 0.8
+  )
+
+```
+
+Predicting
+```{r}
+pred_prob <- predict(rf_reg_ranger, gwide_test_CGC_reg)
+pred_prob
+
+gwide_test_CGC_reg$pred_prob <- pred_prob$predictions
+
+ranked_result <- gwide_test_CGC_reg[
+  with(gwide_test_CGC_reg, order(pred_prob,decreasing = TRUE)),
+]
+
+ranked_result <- ranked_result %>% select("Gene","TS_status","pred_prob")
+ranked_result 
+
+write.csv(ranked_result,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_regression/ranked_result.csv")
+```
+
+
+Performance measuree
+```{r}
+library(PRROC)
+
+PRROC_obj <- roc.curve(scores.class0 = gwide_test_CGC_reg$pred_prob , gwide_test_CGC_reg$Elledge2013.TSG_Probability_LASSO,
+                       curve=TRUE)
+plot(PRROC_obj)
+```
+

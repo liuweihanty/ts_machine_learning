@@ -1,0 +1,35 @@
+---
+title: "chr7_location_visualize"
+author: "Weihan Liu"
+date: "25/03/2020"
+output: html_document
+---
+Install Gviz
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Gviz")
+```
+
+```{r}
+library(Gviz)
+```
+
+```{r}
+library(GenomicRanges)
+data(cpgIslands)
+class(cpgIslands)
+## [1] "GRanges"
+## attr(,"package")
+## [1] "GenomicRanges"
+chr <- as.character(unique(seqnames(cpgIslands)))
+gen <- genome(cpgIslands)
+atrack <- AnnotationTrack(cpgIslands, name="CpG") #annotation track
+plotTracks(atrack)
+
+#create the genomic coordinate track
+gtrack <- GenomeAxisTrack()
+plotTracks(list(gtrack, atrack))
+```
+
