@@ -5,21 +5,6 @@ date: "17/02/2020"
 output: html_document
 ---
 
-Pseudo code for regression random forest implementation:
-
-1.  Given training data set
-2.  Select number of trees to build (ntrees)
-3.  for i = 1 to ntrees do
-4.  |  Generate a bootstrap sample of the original data
-5.  |  Grow a regression tree to the bootstrapped data
-6.  |  for each split do
-7.  |  | Select m variables at random from all p variables
-8.  |  | Pick the best variable/split-point among the m
-9.  |  | Split the node into two child nodes
-10. |  end
-11. | Use typical tree model stopping criteria to determine when a tree is complete (but do not prune)
-12. end
-
 ##Install relevant packages
 ```{r}
 library(randomForest)  
@@ -76,6 +61,7 @@ gwide_test <- gwide_knn %>%
 gwide_test$TS_status <- as.factor(gwide_test$TS_status)
 glimpse(gwide_test)
 
+table(gwide_train_balance$TS_status)
 ```
 
 
@@ -225,6 +211,8 @@ gwide_knn_CGC <- gwide_knn %>% select(-TS_status) %>%
 gwide_knn_CGC$TS_status[is.na(gwide_knn_CGC$TS_status)] <- 0
 
 glimpse(gwide_knn_CGC)
+
+
 ```
 
 
@@ -253,8 +241,7 @@ gwide_test_CGC <- gwide_knn_CGC %>%
         filter(chromosome == 7)
 gwide_test_CGC$TS_status <- as.factor(gwide_test_CGC$TS_status)
 
-
-
+#bootstrp the 0s here, write a function to loop through 100 bootstrapped 0s, and apply hyperparemere tuning + traning + testing for each bootstrap, rank the churned-out genes based on how frequent they appear in these bootstrapped trials.
 ```
 
 
@@ -354,7 +341,7 @@ plot(sens.ci, type="shape", col="lightblue")
 ## definition shape.
 plot(sens.ci, type="bars")
 
-sens.ci
+
 ```
 
 

@@ -1,0 +1,283 @@
+---
+title: "chr7_location_visualize"
+author: "Weihan Liu"
+date: "25/03/2020"
+output: html_document
+---
+Examine the overlap between 
+1.classification predicted TS
+2.regression predicted TS
+3.CGC labeled TS
+4.Elledge labeled TS
+5.Jeremy datamined TS
+6.Jeremy CDR genes
+```{r}
+#predicted TS from classification random forest
+colnames(pred_gene) = "rf_class_gene"
+pred_gene 
+#predicted TS from regression random forest, we will use a probability of 0.3 as a cutoff
+top_ranked_result  <- ranked_result %>% filter(pred_prob > 0.3)
+names(top_ranked_result)[names(top_ranked_result) == "Gene"] = "rf_reg_gene"
+top_ranked_result 
+
+#CGC labeled TS on chr7
+CGC_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
+CGC_TS <- select(CGC_TS,c("Gene.Symbol","Genome.Location"))
+CGC_TS_chr7 <- filter(CGC_TS,grepl("^7:",Genome.Location))
+colnames(CGC_TS_chr7) <- c("Gene","location")
+names(CGC_TS_chr7)[names(CGC_TS_chr7) == "Gene"] = "CGC_gene"
+CGC_TS_chr7
+
+#Elledge TS
+Elledge_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Elledge_2013_TS.csv",stringsAsFactors = FALSE)
+Elledge_TS <- Elledge_TS %>% select(c("Gene","TUSON_q_value_TSG","TSG_Probability_LASSO","Chromosome")) %>% filter(Chromosome == "7")
+Elledge_TS <- Elledge_TS %>% arrange(desc(TSG_Probability_LASSO)) %>% filter(TSG_Probability_LASSO > 0.3)
+names(Elledge_TS)[names(Elledge_TS) == "Gene"] = "Elledge_gene"
+Elledge_TS
+
+#Jeremy datamined TS
+names(jeremy_genes)[names(jeremy_genes) == "Gene"] = "jeremy_gene"
+jeremy_genes
+
+#read in Jeremy's 77 CDR genes, these genes are the ones
+CDR_genes <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE)
+colnames(CDR_genes) <- "Gene"
+names(CDR_genes)[names(CDR_genes) == "Gene"] = "CDR_gene"
+CDR_genes
+
+ts_all <- merge(merge(merge(merge(merge(pred_gene,top_ranked_result, by = 0, all = TRUE),
+      CGC_TS_chr7,by = 0,all = TRUE),
+      Elledge_TS,by = 0,all = TRUE),
+      jeremy_genes,by=0,all=TRUE),
+      CDR_genes,by = 0,all = TRUE)
+
+
+
+
+      
+ts_all <- ts_all[c("rf_class_gene","rf_reg_gene","CGC_gene","Elledge_gene","jeremy_gene","CDR_gene")] 
+glimpse(ts_all)
+```
+
+Do Venn Diagram
+number of overlap between rf_class_gene and jeremy 96 TS genes
+```{r}
+library(VennDiagram)
+rf_class_96_ts <- c()
+for (i in 1:length(jeremy_genes$jeremy_gene)) {
+        if (jeremy_genes$jeremy_gene[i] %in% as.character(pred_gene$rf_class_gene)){
+                rf_class_96_ts <- c(rf_class_96_ts,jeremy_genes$jeremy_gene[i])
+        }
+      
+}
+rf_class_96_ts
+
+grid.newpage()
+draw.pairwise.venn(area1 = 107, area2 = 96, cross.area = 29, category = c("classification random forest prediction", 
+    "datamining genes"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2), cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+number of overlap between rf_reg_gene and jeremy 96 TS genes
+```{r}
+rf_reg_96_ts <- c()
+for (i in 1:length(jeremy_genes$jeremy_gene)) {
+        if (jeremy_genes$jeremy_gene[i] %in% as.character(top_ranked_result$rf_reg_gene)){
+                rf_reg_96_ts <- c(rf_reg_96_ts,jeremy_genes$jeremy_gene[i])
+        }
+      
+}
+rf_reg_96_ts 
+grid.newpage()
+draw.pairwise.venn(area1 = 109, area2 = 96, cross.area = 30, category = c("regression random forest prediction", 
+    "datamining genes"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2),cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+number of overlap between rf_class_gene and jeremy 77 CDR genes
+```{r}
+rf_class_CDR <- c()
+for (i in 1:length(CDR_genes$CDR_gene)) {
+        if (CDR_genes$CDR_gene[i] %in% as.character(pred_gene$rf_class_gene)){
+                rf_class_CDR <- c(rf_class_CDR,CDR_genes$CDR_gene[i])
+        }
+      
+}
+rf_class_CDR 
+
+grid.newpage()
+draw.pairwise.venn(area1 = 107, area2 = 76, cross.area = 14, category = c("classification random forest prediction", 
+    "CDR genes"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2), cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+number of overlap between rf_reg_gene and CDR genes
+```{r}
+rf_reg_CDR <- c()
+for (i in 1:length(CDR_genes$CDR_gene)) {
+        if (CDR_genes$CDR_gene[i] %in% as.character(top_ranked_result$rf_reg_gene)){
+                rf_reg_CDR <- c(rf_reg_CDR,CDR_genes$CDR_gene[i])
+        }
+      
+}
+rf_reg_CDR
+grid.newpage()
+draw.pairwise.venn(area1 = 109, area2 = 76, cross.area = 9, category = c("regression random forest prediction", 
+    "CDR genes"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2),cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+number of overlap between rf_reg_gene and rf_class_genes
+```{r}
+rf_class_reg <- c()
+for (i in 1:length(pred_gene$rf_class_gene)) {
+        if (pred_gene$rf_class_gene[i] %in% as.character(top_ranked_result$rf_reg_gene)){
+               rf_class_reg <- c(rf_class_reg,pred_gene$rf_class_gene[i])
+        }
+      
+}
+rf_class_reg #34 genes
+
+grid.newpage()
+draw.pairwise.venn(area1 = 107, area2 = 109, cross.area = 34, category = c("classification random forest prediction", 
+    "regression random forest prediction"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(0.8,0.8),cex = c(2,2,2),cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+
+Now let's do three-way comparison between the data mined 96 TS, CDR genes and predicted genes
+number of overlap between rf_class_gene,jeremy 96 TS genes and CDR genes
+```{r}
+
+class_96ts_CDR <- c()
+for (i in 1:length(jeremy_genes$jeremy_gene)) {
+        if ((jeremy_genes$jeremy_gene[i] %in% (as.character(pred_gene$rf_class_gene))) & (jeremy_genes$jeremy_gene[i] %in% as.character(CDR_genes$CDR_gene))){
+                class_96ts_CDR <- c(class_96ts_CDR,jeremy_genes$jeremy_gene[i])
+        }
+      
+}
+class_96ts_CDR
+
+grid.newpage()
+draw.triple.venn(area1 = 107, area2 = 96, area3 = 76, n12 = 29, n23 = 11, n13 = 14, 
+    n123 = 4, category = c("classification RF", "datamining genes", "CDR genes"), lty = "blank", 
+    fill = c("skyblue", "pink1", "mediumorchid"))
+```
+
+number of overlap between rf_reg_gene,jeremy 96 TS genes and CDR genes
+```{r}
+reg_96ts_CDR <- c()
+for (i in 1:length(jeremy_genes$jeremy_gene)) {
+        if ((jeremy_genes$jeremy_gene[i] %in% (as.character(top_ranked_result$rf_reg_gene))) & (jeremy_genes$jeremy_gene[i] %in% as.character(CDR_genes$CDR_gene))){
+                reg_96ts_CDR <- c(reg_96ts_CDR,jeremy_genes$jeremy_gene[i])
+        }
+      
+}
+reg_96ts_CDR
+
+grid.newpage()
+draw.triple.venn(area1 = 109, area2 = 96, area3 = 76, n12 = 30, n23 = 11, n13 = 9, 
+    n123 = 5, category = c("regression RF", "datamining genes", "CDR genes"), lty = "blank", 
+    fill = c("skyblue", "pink1", "mediumorchid"))
+
+
+```
+
+
+overlap between classification rf, regression rf and 96 datamining ts
+```{r}
+#overlap between classification rf, regression rf and 96 datamining ts
+class_reg_96ts <- c()
+for (i in 1:length(jeremy_genes$jeremy_gene)) {
+        if ((jeremy_genes$jeremy_gene[i] %in% (as.character(top_ranked_result$rf_reg_gene))) & (jeremy_genes$jeremy_gene[i] %in% as.character(pred_gene$rf_class_gene))){
+                class_reg_96ts <- c(class_reg_96ts,jeremy_genes$jeremy_gene[i])
+        }
+      
+}
+class_reg_96ts
+grid.newpage()
+draw.triple.venn(area1 = 107, area2 = 109, area3 = 96, n12 = 34, n23 = 30, n13 = 29, 
+    n123 = 16, category = c("classification RF", "regression RF", "datamined genes"), lty = "blank", 
+    fill = c("skyblue", "pink1", "mediumorchid"))
+
+```
+
+overlap between classification RF, regression RF and CDR genes
+```{r}
+class_reg_CDR <- c()
+for (i in 1:length(CDR_genes$CDR_gene)) {
+        if ((CDR_genes$CDR_gene[i] %in% (as.character(top_ranked_result$rf_reg_gene))) & (CDR_genes$CDR_gene[i] %in% as.character(pred_gene$rf_class_gene))){
+                class_reg_CDR <- c(class_reg_CDR,CDR_genes$CDR_gene[i])
+        }
+      
+}
+class_reg_CDR
+
+grid.newpage()
+draw.triple.venn(area1 = 107, area2 = 109, area3 = 76, n12 = 34, n23 = 9, n13 = 14, 
+    n123 = 6, category = c("classification RF", "regression RF", "CDR genes"), lty = "blank", 
+    fill = c("skyblue", "pink1", "mediumorchid"))
+```
+
+Now let's do four-way comparison between the data mined 96 TS, CDR genes,classification rf predicted and regression rf predicted genes
+```{r}
+class_reg_96_ts_CDR <- c()
+for (i in 1:length(CDR_genes$CDR_gene)) {
+        if ((CDR_genes$CDR_gene[i] %in% (as.character(top_ranked_result$rf_reg_gene))) & (CDR_genes$CDR_gene[i] %in% as.character(pred_gene$rf_class_gene)) & (CDR_genes$CDR_gene[i] %in% as.character(jeremy_genes$jeremy_gene))){
+                class_reg_96_ts_CDR <- c(class_reg_96_ts_CDR,CDR_genes$CDR_gene[i])
+        }
+      
+}
+class_reg_96_ts_CDR 
+
+grid.newpage()
+draw.quad.venn(area1 = 107, area2 = 109, area3 = 96, area4 = 76, n12 = 34,n13 = 29, n14 = 14, n23 = 30, n24 = 9, n34 = 11, n123 = 16, n124 = 6, n134 = 4, n234 = 5, n1234 = 4 ,category = c("classification RF","regression RF", "datamining genes", "CDR genes"), lty = "blank", 
+    fill = c("skyblue", "pink1", "mediumorchid","orange"))
+```
+
+
+Now let's do four-way comparison between the data mined 96 TS, CDR genes,classification rf predicted and regression rf predicted genes
+
+
+
+
+Use UPSETR package to interset all datasets
+```{r}
+
+```
+
+
+Install Gviz
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Gviz")
+```
+
+```{r}
+library(Gviz)
+```
+
+```{r}
+library(GenomicRanges)
+data(cpgIslands)
+class(cpgIslands)
+## [1] "GRanges"
+## attr(,"package")
+## [1] "GenomicRanges"
+chr <- as.character(unique(seqnames(cpgIslands)))
+gen <- genome(cpgIslands)
+atrack <- AnnotationTrack(cpgIslands, name="CpG") #annotation track
+plotTracks(atrack)
+
+#create the genomic coordinate track
+gtrack <- GenomeAxisTrack()
+plotTracks(list(gtrack, atrack))
+```
+
