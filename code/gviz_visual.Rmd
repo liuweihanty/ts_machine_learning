@@ -1,0 +1,55 @@
+---
+title: "Chromosome 7 TS Gene Visualization"
+author: "Shirley Zhou"
+date: "3/29/2020"
+output: html_document
+---
+
+Load the following package needed:
+1) Gviz to perform visualization
+2) GenomicRanges to build object read by Gviz 
+3) biomaRt to retreive coordinates by gene name 
+```{r setup}
+library(Gviz)
+library(GenomicRanges)
+library(biomaRt)
+```
+
+Load the lists of interest:
+1) list of CDR genes
+2) list of TS from regression RF
+3) list of TS from classfication RF
+4) list of TS from data mining by Jeremy
+
+
+genome track --> hg38
+```{r load lists}
+#2. list of ts from regression RF
+reg.rf <- read.table("../data/gwide_hema_regression/ranked_result.csv", sep = ",", header = TRUE)
+reg.rf.ts <- reg.rf$Gene
+
+#3. list of ts from classification RF
+class.rf <- read.csv("../data/gwide_hema_classification/pred_hits_CGC.csv", sep = ",", header = TRUE)
+class.rf.ts <-class.rf$Gene
+
+#4. list of TS from data mining by Jeremy
+jeremy <- read.csv("../data/96ts_work_data.csv", sep = ",", header = TRUE)
+jeremy.ts <-jeremy$Gene
+```
+
+
+
+```{r}
+
+
+
+```
+
+
+```{r}
+data(cpgIslands)
+class(cpgIslands)
+chr <- as.character(unique(seqnames(cpgIslands)))
+gen <- genome(cpgIslands)
+atrack <- AnnotationTrack(cpgIslands, name="CpG")
+```
