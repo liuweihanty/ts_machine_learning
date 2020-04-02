@@ -33,7 +33,7 @@ regrf.ts <- as.vector(regrf$Gene)
 
 #2. list of ts from classification RF
 classrf <- read.csv("../data/gwide_hema_classification/pred_hits_CGC.csv", sep = ",", header = TRUE)
-classrf.ts <- as.vector(class.rf$Gene)
+classrf.ts <- as.vector(classrf$Gene)
 
 #3. list of TS from data mining by Jeremy
 jeremy <- read.csv("../data/96ts_work_data.csv", sep = ",", header = TRUE)
@@ -81,7 +81,10 @@ data_retrieve <- function(gene, mart) {
 ```
 
 ```{r Create the result dataframes from the 5 lists}
-mart.hs <- useMart("ensembl", "hsapiens_gene_ensembl")
+mart.hs <- useEnsembl(biomart = "ensembl", 
+                      dataset = "hsapiens_gene_ensembl", 
+                      mirror = "useast")
+
 regrf.result <- data_retrieve(regrf.ts, mart.hs)
 classrf.result <- data_retrieve(classrf.ts, mart.hs)
 jeremy.result <- data_retrieve(jeremy.ts, mart.hs)
@@ -162,7 +165,9 @@ cdr_zoomin_plot <- function(result, title, cdr_num) {
                                  result$strand,
                                  group = result$hgnc_symbol,
                                  id=result$hgnc_symbol))
-  atrack <- AnnotationTrack(data_g, name = title, groupAnnotation="group", fontcolor.group="darkblue", shape = "box", just.group = "left")
+  atrack <- AnnotationTrack(data_g, name = title, 
+                            groupAnnotation="group", fontcolor.group="darkblue", 
+                            shape = "box", just.group = "left")
   
   gtrack <- GenomeAxisTrack()
   
@@ -242,3 +247,166 @@ cdr_zoomin_plot(jeremy.result, "Data Mining CDR3", 3)
 cdr_zoomin_plot(jeremy.result, "Data Mining CDR4", 4)
 ```
 
+
+```{r regrf rank plot overall} 
+
+chr <- 'chr7'
+gen <- 'hg38'
+result <- regrf.result
+regrf.result.rank <- data.frame(result, rank = 110 - regrf[order(regrf$Gene),]$rank)
+  
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                              result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "Regression RF Overall")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+rank_data <- regrf.result.rank
+rank_data <- rank_data[order(rank_data$start_position),]
+
+rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
+                                                    rank_data$end_position),
+                                       strand = "*",
+                                       rank=rank_data$rank))
+                        
+dTrack <- DataTrack(rank_data_d, name="Score")
+
+cdr_region <-data.frame(start = c(93063919, 138369119, 100117325, 144345422),
+                        end = c(93249021, 140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(atrack, dTrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht), type = "b")
+
+```
+
+```{r regrf rank plot top 20}
+chr <- 'chr7'
+gen <- 'hg38'
+
+result <- regrf.result.rank %>% filter (rank >= (nrow(result)-20)) 
+
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                            result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "Regression RF Top20",
+                          groupAnnotation="group", fontcolor.group="darkblue", 
+                          shape = "box", just.group = "left")
+  
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+rank_data <- result
+rank_data <- rank_data[order(rank_data$start_position),]
+
+rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
+                                                    rank_data$end_position),
+                                       strand = "*",
+                                       rank=rank_data$rank))
+                        
+dTrack <- DataTrack(rank_data_d, name="Score")
+
+cdr_region <-data.frame(start = c(93063919, 138369119, 100117325, 144345422),
+                        end = c(93249021, 140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(atrack, dTrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht), type = "b")
+
+```
+
+```{r CDR plot with rank function }
+#define a function to plot result zoomed in on a specified CDR
+
+cdr_zoomin_plot_w_rank <- function(result, title, cdr_num) {
+  
+  cdr <-data.frame(start = c(93063919, 100117325, 138369119, 144345422),
+                   end = c(93249021, 102627325, 140078203, 148972761))
+  
+  cdr_start <- cdr$start[cdr_num]
+  cdr_end <- cdr$end[cdr_num]
+  
+  result <- result %>% filter((start_position >= cdr_start & end_position <= cdr_end) |
+                              (start_position <= cdr_start & end_position >= cdr_start) |
+                              (start_position <= cdr_end & end_position >= cdr_end) |
+                              (start_position <= cdr_start & end_position >= cdr_end))
+  
+  if (nrow(result) == 0) {
+    statement = paste("No TS Genes in", title)
+    return (statement)
+  }
+  
+  chr <- 'chr7'
+  gen <- 'hg38'
+  
+  data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                              result$end_position),
+                                 result$strand,
+                                 group = result$hgnc_symbol,
+                                 id=result$hgnc_symbol))
+  atrack <- AnnotationTrack(data_g, name = title, 
+                            groupAnnotation="group", fontcolor.group="darkblue", 
+                            shape = "box", just.group = "left")
+  
+  gtrack <- GenomeAxisTrack()
+  
+  itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+  
+  rank_data <- result
+  rank_data <- rank_data[order(rank_data$start_position),]
+
+  rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
+                                                      rank_data$end_position),
+                                         strand = "*",
+                                         rank=rank_data$rank))
+  
+  dtrack <- DataTrack(rank_data_d, name="Score")
+  
+  if ((sum(result$start_position < cdr_start) + sum(result$end_position > cdr_end)) > 0) {
+    ht <- HighlightTrack(trackList=list(atrack, dtrack), 
+                         start = cdr_start, 
+                         end = cdr_end,
+                         chromosome = chr,
+                         genome = gen)
+    plotTracks(list(itrack, gtrack, ht), type = "b")
+  } else {
+    plotTracks(list(itrack, gtrack, atrack, dtrack), from = cdr_start - 3e5, to = cdr_end, type = "b")
+  }
+}
+    
+```
+
+```{r zoom_in plot for regrf CDR1}
+cdr_zoomin_plot_w_rank(regrf.result.rank, "Regression RF CDR1 with Rank", 1)
+```
+
+
+```{r zoom_in plot for regrf CDR2}
+cdr_zoomin_plot_w_rank(regrf.result.rank, "Regression RF CDR2 with Rank", 2)
+```
+
+
+```{r zoom_in plot for regrf CDR3}
+cdr_zoomin_plot_w_rank(regrf.result.rank, "Regression RF CDR3 with Rank", 3)
+```
+
+
+```{r zoom_in plot for regrf CDR4}
+cdr_zoomin_plot_w_rank(regrf.result.rank, "Regression RF CDR4 with Rank", 4)
+```
