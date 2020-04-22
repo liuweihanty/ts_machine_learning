@@ -26,8 +26,9 @@ Load the lists of interest:
 genome track --> hg38
 ```{r load lists}
 #1. list of ts from regression RF
-regrf <- read.table("../data/gwide_hema_regression/ranked_result.csv", sep = ",", header = TRUE)
-regrf <- regrf %>% filter(pred_prob > 0.3)
+regrf.complete <- read.table("../data/gwide_hema_regression/ranked_result.csv", sep = ",", header = TRUE)
+regrf.complete <- regrf.complete[order(regrf.complete$Gene), ]
+regrf <- regrf.complete %>% filter(pred_prob > 0.3)
 regrf <- data.frame(regrf, rank = c(1:109))
 regrf.ts <- as.vector(regrf$Gene)
 
@@ -40,10 +41,10 @@ jeremy <- read.csv("../data/96ts_work_data.csv", sep = ",", header = TRUE)
 jeremy.ts <- as.vector(jeremy$Gene)
 
 #4. overlap list of jeremy's data mining & classificaiton rf
-classandjeremy.ts <- unique(c(classrf.ts, jeremy.ts))
+classandjeremy.ts <- unique(as.vector(c(classrf.ts, jeremy.ts)))
 
 #5. overlap list of jeremy's data mining & regression rf
-regandjeremy.ts <- unique(c(regrf.ts, jeremy.ts))
+regandjeremy.ts <- unique(as.vector(c(regrf.ts, jeremy.ts)))
 ```
 
 ```{r biomaRt function}
@@ -80,11 +81,21 @@ data_retrieve <- function(gene, mart) {
 
 ```
 
-```{r Create the result dataframes from the 5 lists}
+```{r initalize mart object}
+#initialize mart object
+mart.hs <- useEnsembl(biomart = "ensembl", 
+                      dataset = "hsapiens_gene_ensembl")
+```
+
+```{r alternative initalization of mart using a mirror server}
+#Use ensembl mirror site if emsembl not responding
 mart.hs <- useEnsembl(biomart = "ensembl", 
                       dataset = "hsapiens_gene_ensembl", 
-                      mirror = "useast")
+                      mirror = "uswest")
+#Valid mirror options are 'www', 'uswest', 'useast', 'asia'
+```
 
+```{r Create the result dataframes from the 5 lists}
 regrf.result <- data_retrieve(regrf.ts, mart.hs)
 classrf.result <- data_retrieve(classrf.ts, mart.hs)
 jeremy.result <- data_retrieve(jeremy.ts, mart.hs)
@@ -110,8 +121,8 @@ overall_plot <- function(result, title) {
   
   itrack <- IdeogramTrack(genome = gen, chromosome = chr)
   
-  cdr_region <-data.frame(start = c(93063919, 138369119, 100117325, 144345422),
-                          end = c(93249021, 140078203, 102627325, 148972761))
+  cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                          end = c(140078203, 102627325, 148972761))
 
   ht <- HighlightTrack(trackList=list(atrack), 
                        start = cdr_region$start, 
@@ -123,13 +134,16 @@ overall_plot <- function(result, title) {
 
 ```
 
+
 ```{r Regresion RF overall plot}
 overall_plot(regrf.result, "Regression Random Forest TS")
 ```
 
+
 ```{r Classfication RF overall plot}
 overall_plot(classrf.result, "Classification Random Forest TS")
 ```
+
 
 ```{r Datamining overall plot }
 overall_plot(jeremy.result, "Data Mining TS")
@@ -141,8 +155,8 @@ overall_plot(jeremy.result, "Data Mining TS")
 
 cdr_zoomin_plot <- function(result, title, cdr_num) {
   
-  cdr <-data.frame(start = c(93063919, 100117325, 138369119, 144345422),
-                 end = c(93249021, 102627325, 140078203, 148972761))
+  cdr <-data.frame(start = c(100117325, 138369119, 144345422),
+                 end = c(102627325, 140078203, 148972761))
   
   cdr_start <- cdr$start[cdr_num]
   cdr_end <- cdr$end[cdr_num]
@@ -203,11 +217,6 @@ cdr_zoomin_plot(regrf.result, "Regression RF CDR3", 3)
 ```
 
 
-```{r zoom_in plot for regrf CDR4}
-cdr_zoomin_plot(regrf.result, "Regression RF CDR4", 4)
-```
-
-
 ```{r zoom_in plot for classrf CDR1}
 cdr_zoomin_plot(classrf.result, "Classification RF CDR1", 1)
 ```
@@ -223,11 +232,6 @@ cdr_zoomin_plot(classrf.result, "Classification RF CD3", 3)
 ```
 
 
-```{r zoom_in plot for classrf CDR4}
-cdr_zoomin_plot(classrf.result, "Classification RF CDR4", 4)
-```
-
-
 ```{r zoom_in plot for Data Mining CDR1}
 cdr_zoomin_plot(jeremy.result, "Data Mining CDR1", 1)
 ```
@@ -240,11 +244,6 @@ cdr_zoomin_plot(jeremy.result, "Data Mining CDR2", 2)
 
 ```{r zoom_in plot for Data Mining CDR3}
 cdr_zoomin_plot(jeremy.result, "Data Mining CDR3", 3)
-```
-
-
-```{r zoom_in plot for Data Mining CDR4}
-cdr_zoomin_plot(jeremy.result, "Data Mining CDR4", 4)
 ```
 
 
@@ -276,8 +275,8 @@ rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
                         
 dTrack <- DataTrack(rank_data_d, name="Score")
 
-cdr_region <-data.frame(start = c(93063919, 138369119, 100117325, 144345422),
-                        end = c(93249021, 140078203, 102627325, 148972761))
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
 
 
 ht <- HighlightTrack(trackList=list(atrack, dTrack), 
@@ -318,8 +317,8 @@ rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
                         
 dTrack <- DataTrack(rank_data_d, name="Score")
 
-cdr_region <-data.frame(start = c(93063919, 138369119, 100117325, 144345422),
-                        end = c(93249021, 140078203, 102627325, 148972761))
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
 
 
 ht <- HighlightTrack(trackList=list(atrack, dTrack), 
@@ -331,13 +330,13 @@ plotTracks(list(itrack, gtrack, ht), type = "b")
 
 ```
 
-```{r CDR plot with rank function }
+```{r CDR plot with rank function}
 #define a function to plot result zoomed in on a specified CDR
 
 cdr_zoomin_plot_w_rank <- function(result, title, cdr_num) {
   
-  cdr <-data.frame(start = c(93063919, 100117325, 138369119, 144345422),
-                   end = c(93249021, 102627325, 140078203, 148972761))
+  cdr <-data.frame(start = c(100117325, 138369119, 144345422),
+                   end = c(102627325, 140078203, 148972761))
   
   cdr_start <- cdr$start[cdr_num]
   cdr_end <- cdr$end[cdr_num]
@@ -407,6 +406,293 @@ cdr_zoomin_plot_w_rank(regrf.result.rank, "Regression RF CDR3 with Rank", 3)
 ```
 
 
-```{r zoom_in plot for regrf CDR4}
-cdr_zoomin_plot_w_rank(regrf.result.rank, "Regression RF CDR4 with Rank", 4)
+```{r overlay function}
+#define a function that takes 2 list and 1 overlayed list with unique entries and return an array with 1s and 2s
+
+overlay_count <- function(overlay_list, list1, list2) {
+  result <- c()
+  
+  #if an item in the overlayed list is in both list, then the entry will be 
+  for (item in overlay_list) {
+    if ((item %in% list1) & (item %in% list2)) {
+      result <- append(result, 2)
+    } else {
+      result <- append(result, 1)
+    }
+  }
+  return(result)
+}
+
+classandjeremy.ts <- unique(as.vector(c(classrf.ts, jeremy.result$hgnc_symbol)))
+classandjeremy.count <- overlay_count(classandjeremy.ts, classrf.ts, jeremy.result$hgnc_symbol)
+
+regandjeremy.ts <- unique(as.vector(c(regrf.ts, jeremy.result$hgnc_symbol)))
+regandjeremy.count <- overlay_count(regandjeremy.ts, regrf.ts, jeremy.result$hgnc_symbol)
+```
+
+
+```{r Classification RF and Data mining overlayed graph}
+
+chr <- 'chr7'
+gen <- 'hg38'
+result <- data.frame(classandjeremy.result, count = classandjeremy.count)
+result <- result[order(result$start_position), ]
+
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                            result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "Classification RF and Data Mining overlayed")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+data <- with(result, GRanges(chr, IRanges(result$start_position,
+                                          result$end_position),
+                                       strand = "*",
+                                       count=result$count))
+                        
+dTrack <- DataTrack(data, name="Count")
+
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(atrack, dTrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht), type = "b")
+```
+
+```{r TS Genes in Both Classification and Data mining}
+
+chr <- 'chr7'
+gen <- 'hg38'
+result <- data.frame(classandjeremy.result, count = classandjeremy.count)
+result <- result %>% filter(count == 2)
+
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                            result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "TS Genes in Both Classification RF and Data Mining",
+                          groupAnnotation="group", fontcolor.group="darkblue", 
+                          shape = "box", just.group = "left")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(atrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht), )
+
+```
+
+```{r Regression RF and Data mining overlayed graph}
+
+chr <- 'chr7'
+gen <- 'hg38'
+result <- data.frame(regandjeremy.result, count = regandjeremy.count)
+result <- result[order(result$start_position), ]
+
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                            result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "Regression RF & Data Mining Overlayed")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+data <- with(result, GRanges(chr, IRanges(result$start_position,
+                                          result$end_position),
+                                       strand = "*",
+                                       count=result$count))
+                        
+dTrack <- DataTrack(data, name="Count")
+
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(atrack, dTrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht), type = "b")
+```
+
+
+```{r TS Genes in Both Regression RF and Data mining}
+
+chr <- 'chr7'
+gen <- 'hg38'
+result <- data.frame(regandjeremy.result, count = regandjeremy.count)
+result <- result %>% filter(count == 2)
+
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                            result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "TS Genes in Both Regression RF and Data Mining",
+                          groupAnnotation="group", fontcolor.group="darkblue", 
+                          shape = "box", just.group = "left")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(atrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht), )
+
+```
+
+
+```{r More }
+regrf.complete.result <- data_retrieve(regrf.complete$Gene, mart.hs)
+```
+
+
+```{r}
+chr <- 'chr7'
+gen <- 'hg38'
+result <- regrf.complete.result
+result <- data.frame(result, pred_prob = regrf.complete$pred_prob)
+result <- result[order(result$start_position), ]
+  
+data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                              result$end_position),
+                               result$strand,
+                               group=result$hgnc_symbol,
+                               id=result$hgnc_symbol))
+atrack <- AnnotationTrack(data_g, name = "Regression RF All Chr7 Genes")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+data <- with(rank_data, GRanges(chr, IRanges(result$start_position,
+                                             result$end_position),
+                                strand = "*",
+                                pred_prob=result$pred_prob))
+                        
+dTrack <- DataTrack(data, name="Predicted Probability", type = "l")
+#dTrack_s <- DataTrack(data, name="Predicted Probability", type = "l")
+
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
+
+
+ht <- HighlightTrack(trackList=list(dTrack), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+plotTracks(list(itrack, gtrack, ht))
+
+```
+
+
+```{r}
+regrf.complete.result <- data.frame(regrf.complete.result, 
+                                    pred_prob = regrf.complete$pred_prob)
+regrf.complete.result <- regrf.complete.result[order(regrf.complete.result$start_position), ]
+
+cdr_zoomin_plot_w_pred_prob <- function(result, title, cdr_num) {
+  
+  cdr <-data.frame(start = c(100117325, 138369119, 144345422),
+                   end = c(102627325, 140078203, 148972761))
+  
+  cdr_start <- cdr$start[cdr_num]
+  cdr_end <- cdr$end[cdr_num]
+  
+  result <- result %>% filter((start_position >= cdr_start & end_position <= cdr_end) |
+                              (start_position <= cdr_start & end_position >= cdr_start) |
+                              (start_position <= cdr_end & end_position >= cdr_end) |
+                              (start_position <= cdr_start & end_position >= cdr_end))
+  
+  if (nrow(result) == 0) {
+    statement = paste("No TS Genes in", title)
+    return (statement)
+  }
+  
+  chr <- 'chr7'
+  gen <- 'hg38'
+  
+  data_g <- with(result, GRanges(chr, IRanges(result$start_position,
+                                              result$end_position),
+                                 result$strand,
+                                 group = result$hgnc_symbol,
+                                 id=result$hgnc_symbol))
+  atrack <- AnnotationTrack(data_g, name = title, 
+                            groupAnnotation="group", fontcolor.group="darkblue", 
+                            shape = "box", just.group = "left")
+  
+  gtrack <- GenomeAxisTrack()
+  
+  itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+  
+  data<- with(rank_data, GRanges(chr, IRanges(result$start_position,
+                                              result$end_position),
+                                         strand = "*",
+                                         pred_prob=result$pred_prob))
+  
+  dtrack <- DataTrack(data, name="Predicted Probability")
+  
+  if ((sum(result$start_position < cdr_start) + sum(result$end_position > cdr_end)) > 0) {
+    ht <- HighlightTrack(trackList=list(atrack, dtrack), 
+                         start = cdr_start, 
+                         end = cdr_end,
+                         chromosome = chr,
+                         genome = gen)
+    plotTracks(list(itrack, gtrack, ht), type = "l")
+  } else {
+    plotTracks(list(itrack, gtrack, atrack, dtrack), from = cdr_start - 3e5, to = cdr_end, type = "l")
+  }
+}
+```
+
+
+```{r zoom_in plot for regrf CDR1}
+cdr_zoomin_plot_w_pred_prob(regrf.complete.result, "Regression RF CDR1 with Pred Prob", 1)
+```
+
+
+```{r zoom_in plot for regrf CDR2}
+cdr_zoomin_plot_w_pred_prob(regrf.complete.result, "Regression RF CDR2 with Pred Prob", 2)
+```
+
+
+```{r zoom_in plot for regrf CDR3}
+cdr_zoomin_plot_w_pred_prob(regrf.complete.result, "Regression RF CDR3 with Pred Prob", 3)
+```
+
+
+```{r}
+regrf.complete
 ```
