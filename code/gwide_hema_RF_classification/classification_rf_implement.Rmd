@@ -12,6 +12,7 @@ library(caret)
 library(ggplot2) 
 library(dplyr)
 library(tibble)
+library(stats)
 ```
 
 
@@ -24,26 +25,33 @@ gwide_knn <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/g
 
 
 ##Training and testing data split
+
+some data cleaning
 ```{r}
-set.seed(1)
+set.seed(1278353)
 #move the gene column to row names
 gwide_knn <- gwide_knn %>% column_to_rownames(var = "Gene")
 gwide_knn <- select(gwide_knn, -"X")
 head(gwide_knn)
-#convert the TS gene status column to factor
-#gwide_knn$TS_status <- as.factor(gwide_knn$TS_status)
-#split for testing and training data, training data are every gene not on chr 7, tetsing data are everything on chr7
+```
 
+
+--------------------------
+
+split for testing and training data, training data are every gene not on chr 7, tetsing data are everything on chr7
+```{r}
+#split for testing and training data, training data are every gene not on chr 7, tetsing data are everything on chr7
 table(gwide_knn$chromosome)
-#training(unbalanced)
+
+#create training data (unbalanced)
 gwide_train <- gwide_knn %>%
         filter(chromosome != 7 & chromosome != "MT")
 
 table(gwide_train$chromosome)
+```
 
-#there are 17484 non-TS and 943 TS, which caused the problem of classification imbalance. The majority 0s will dominate the training process, thus, we need to make a more balanced training set in terms of the TS label. from the gwide_train table, I extracted all the TSs(~1000 genes) and from the non-TSs, I randomly sampled ~ 1000 genes, and combined these two sets of genes.
-
-
+there are 17484 non-TS and 943 TS, which caused the problem of classification imbalance. The majority 0s will dominate the training process, thus, we need to make a more balanced training set in terms of the TS label. from the gwide_train table, I extracted all the TSs(~1000 genes) and from the non-TSs, I randomly sampled ~ 1000 genes, and combined these two sets of genes.
+```{r}
 #create a balanced training set by taking all TSGene == 1(tumor suppressors), and sample randomly from each chromosome by fraction = 0.06. In this way, in the final training set we will have roughly equal amount of TS and non-TS
 gwide_train_balance <- filter(gwide_train,TS_status == 0) %>% 
         grouped_df("chromosome") %>%
@@ -194,8 +202,11 @@ auc(actual = ifelse(gwide_test$TS_status == 1, 1, 0),
 
 
 
+----------------
+
+
 Use the label from Cancer Gene Census as the ground truth instead of the TSGene
-Read in the data and switch the ground truth column
+##Read in the data and switch the ground truth column
 ```{r}
 #read in the CGC data
 CGC_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
@@ -212,102 +223,192 @@ gwide_knn_CGC$TS_status[is.na(gwide_knn_CGC$TS_status)] <- 0
 
 glimpse(gwide_knn_CGC)
 
-
 ```
 
 
-Split the training vs testing data
+##Split the training vs testing data
+create training data, which is all of the non-chromosome 7 genes. The training data is unbalanced, majority of genes are non CGC labeled TS, so their TS status = 0
 ```{r}
-#training(unbalanced)
-
 gwide_train_CGC <- gwide_knn_CGC %>%
         filter(chromosome != 7 & chromosome != "MT")
 
 table(gwide_train_CGC$chromosome)
+```
 
+Balance the training data set by sampling non-TS from the training data set using bootstrapping
+```{r}
+set.seed(683723)
 
-#training(balanced)
-gwide_train_balance_CGC <- filter(gwide_train_CGC,TS_status == 0) %>% 
-        grouped_df("chromosome") %>%
-        sample_frac(size = 0.02)
+#function to generate the balanced training data
+# input is the unbalanced unsampled training data
+train_data_generate <- function(train_data = gwide_train_CGC){
 
-gwide_train_balance_CGC <- as.data.frame(gwide_train_balance_CGC)
-gwide_train_balance_CGC <- rbind(gwide_train_balance_CGC,filter(gwide_train_CGC,TS_status == 1))
+        gwide_train_balance_CGC <- filter(train_data,TS_status == 0) %>% 
+                                grouped_df("chromosome") %>%
+                                sample_frac(size = 0.02)
+                        
+        gwide_train_balance_CGC <- as.data.frame(gwide_train_balance_CGC)
+        gwide_train_balance_CGC <- rbind(gwide_train_balance_CGC,filter(gwide_train_CGC,TS_status == 1))
+        gwide_train_balance_CGC$TS_status <- as.factor(gwide_train_balance_CGC$TS_status)
+        gwide_train_balance_CGC <- column_to_rownames(gwide_train_balance_CGC,var = "Gene")
+        
+        return(gwide_train_balance_CGC )
+}
 
-gwide_train_balance_CGC$TS_status <- as.factor(gwide_train_balance_CGC$TS_status)
-str(gwide_train_balance_CGC)
+#run the function 100 times and store the resulted training data in a list
+balanced_train_list  <- lapply(seq_len(100),function(x) train_data_generate(gwide_train_CGC))
+
+```
+
+Generate testing data
+```{r}
 #creating testing set, which will be all genes on chromosome 7
 gwide_test_CGC <- gwide_knn_CGC %>%
         filter(chromosome == 7)
 gwide_test_CGC$TS_status <- as.factor(gwide_test_CGC$TS_status)
+gwide_test_CGC <- select(gwide_test_CGC, -"chromosome")
+gwide_test_CGC <- column_to_rownames(gwide_test_CGC,var = "Gene")
 
-#bootstrp the 0s here, write a function to loop through 100 bootstrapped 0s, and apply hyperparemere tuning + traning + testing for each bootstrap, rank the churned-out genes based on how frequent they appear in these bootstrapped trials.
+str(gwide_test_CGC)
+
 ```
 
 
-training data: gwide_train_balance_CGC
+training data list: balanced_train_list
 testing data: gwide_test_CGC
 
 ##Hyperparameter tuning
+We will use a grid search based method to exhaustively search for the best combination hyperparameters, which will give the smallest OOB error
 ```{r}
 #' @ntree: number of trees, default is 500
 #' @mtry: number of variables randomly sampled as candidates at each split
 #' @samplesize: number of samples(rows) to train on, default = 63.2%
 #' @nodesize: minimum size(# of samples) pf the terminal nodes, if small, allows deeper and more complex tree
 #' @maxnodes: maximum number of terminal nodes
-gwide_train_balance_CGC <- column_to_rownames(gwide_train_balance_CGC,var = "Gene") 
+
 #grid search
-# Establish a list of possible values for mtry, nodesize and sampsize
-mtry1 <- seq(4, ncol(gwide_train_balance_CGC) * 0.8, 2)
-nodesize1 <- seq(3, 10, 2)
-sampsize1 <- nrow(gwide_train_balance_CGC) * c(0.7,0.8)
+#Establish a list of possible values for mtry, nodesize and sampsize
+mtry <- seq(4, ncol(balanced_train_list[[1]]) * 0.8, 2)
+nodesize <- seq(3, 10, 2)
+sampsize <- nrow(balanced_train_list[[1]]) * c(0.7,0.8)
+#create an empty holder dataframe to hold all the hyperparatmeters creates for each boostrap
 
-# Create a data frame containing all combinations 
-hyper_grid1 <- expand.grid(mtry1 = mtry1, nodesize1 = nodesize1, sampsize1 = sampsize1)
+best_hyper_all <- data.frame()
 
-# Create an empty vector to store OOB error values
-oob_err1 <- c()
+hyper_parameter_tune <- function(train_data,mtry,nodesize,sampsize){
+        for (k in 1:length(train_data)){
+                # Create a data frame containing all combinations 
+                hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
+                # Create an empty vector to store OOB error values
+                oob_err <- c()
+                
+                # Write a loop over the rows of hyper_grid to train the grid of models
+                for (i in 1:nrow(hyper_grid)) {
+                
+                    # Train a Random Forest model
+                    rf_model <- randomForest(formula = TS_status ~ ., 
+                                          data = select(train_data[[k]],-c("chromosome")),
+                                          mtry = hyper_grid$mtry[i],
+                                          nodesize = hyper_grid$nodesize[i],
+                                          sampsize = hyper_grid$sampsize[i])
+                                          
+                    # Store OOB error for the model                      
+                    oob_err[i] <- rf_model$err.rate[nrow(rf_model$err.rate), "OOB"]
+                }
+        
+                # Identify optimal set of hyperparmeters based on OOB error
+                opt_i <- which.min(oob_err)
+                best_hyper <- hyper_grid[opt_i,]
+                best_hyper_all <- rbind(best_hyper_all,best_hyper) 
+        }
+       return(best_hyper_all)        
+}  
 
-# Write a loop over the rows of hyper_grid to train the grid of models
-for (i in 1:nrow(hyper_grid1)) {
-
-    # Train a Random Forest model
-    rf_model1 <- randomForest(formula = TS_status ~ ., 
-                          data = select(gwide_train_balance_CGC,-c("chromosome")),
-                          mtry1 = hyper_grid1$mtry1[i],
-                          nodesize1 = hyper_grid1$nodesize1[i],
-                          sampsize1 = hyper_grid1$sampsize1[i])
-                          
-    # Store OOB error for the model                      
-    oob_err1[i] <- rf_model1$err.rate[nrow(rf_model1$err.rate), "OOB"]
-}
-
-# Identify optimal set of hyperparmeters based on OOB error
-opt_i <- which.min(oob_err)
-print(hyper_grid[opt_i,])
+best_hyper_all <- hyper_parameter_tune(balanced_train_list,mtry,nodesize,sampsize) 
+ 
 ```
 
 
 ## fit of random forest model using the optimal hyperparameters
 ```{r, fig.height=4, fig.width=8}
-set.seed(22)
+set.seed(2245646)
+#' @train_data_list: list of randomly sampled training data
+#' @hyperparameter_grid: a dataframe of hyperparameteers corresponding to your training data list. Each training data in the list has a corresponding combination of hyperparameters
 
-#taking the 
-rf1 = randomForest(TS_status ~ .,  
-                   data = select(gwide_train_balance_CGC,-c("chromosome")),importance = TRUE,mtry = 8,nodesize = 3,sampsize = nrow(gwide_train_balance_CGC))
-plot(rf1) 
-print(rf1)
-varImpPlot(rf1)
 
+run_class_rf <- function(train_data_list = balanced_train_list,hyperparameter_grid = best_hyper_all) {
+        rf_list <- vector(mode = "list",length = length(balanced_train_list)) #empty holder list to hold all the rf model 
+        for (i in 1:length(train_data_list)) {
+                rf = randomForest(TS_status ~ .,
+                                  data = select(train_data_list[[i]],
+                                   -"chromosome"),
+                                  importance = TRUE,
+                                  mtry = hyperparameter_grid[i,1],
+                                  nodesize = hyperparameter_grid[i,2],
+                                  sampsize = floor(hyperparameter_grid[i,3])) # it's mandatory you round the sample size here to an integer, otherwise the predict() code will break
+                                  rf_list[[i]] <- rf
+        }
+        return(rf_list)
+}
+
+class_rf_list <- run_class_rf(balanced_train_list,best_hyper_all)
 ```
+
+Examine overall OOB rate
+```{r}
+set.seed(8976969)
+#' @rf_list: list containing all rf models
+mean_OOB <- function(rf_list) {
+        OOB_list <- numeric(length = length(rf_list)) #empty holder vector to hold all the OOBs
+        for (i in 1:length(rf_list)){
+            err <- as.data.frame(rf_list[[i]]$err.rate) 
+            OOB <- mean(err$OOB) #mean OOB for each model
+            OOB_list[[i]] <- OOB
+        }
+        return(OOB_list)
+}
+
+mean_OOB_list <- mean_OOB(class_rf_list) #OOB values for all classification RF models
+mean(mean_OOB_list) #average of all OOB values
+boxplot(mean_OOB_list)#visualize distribution of OOB values 
+
+ #print(rf1) #use this print out individual RF model 
+ #varImpPlot(rf1) #use this to plot the importance for predictor columns
+```
+
 
 ##Predict the test set
 ```{r}
-# Generate predicted classes using the model object
-gwide_test_CGC$hits<- predict(object = rf1,newdata = gwide_test_CGC,type = "class") 
+set.seed(57835678)
+class_rf_pred <- function(rf_list, test_data){
+        for (i in 1:length(rf_list)){
+                test_data <- cbind(test_data,predict(object = rf_list[[i]],newdata = test_data,type = "class")) #attach all the prediction results for every bootstrapp to the test data
+        return(test_data)
+} 
+}
+gwide_test_CGC_new <- class_rf_pred(class_rf_list,gwide_test_CGC)
 
-#extract the predicted TS genes in the test set
-pred_gene <- filter(gwide_test_CGC, hits == 1)["Gene"]
+```
+
+Rank the genes based on the frequency of being predicted as TS(1)
+```{r}
+#convert all prediction result columns to numeric, for addition
+for (i in 34:133) {
+        gwide_test_CGC_new[,i] <- as.numeric(gwide_test_CGC_new[,i])
+        
+}
+
+#add all prediction result for all bootstrapped samples, and store this summation in a columns
+gwide_test_CGC_new$hits_total <- rowSums(gwide_test_CGC_new[,34:133]) 
+
+rf_class_result <- as.data.frame(rowSums(gwide_test_CGC_new[,34:133])) 
+colnames(rf_class_result) = "TS_freq"
+rf_class_result <- rownames_to_column(rf_class_result,var = "Gene")
+rf_class_result <- rf_class_result[order(rf_class_result$TS_freq,decreasing = TRUE),]
+rf_class_result #this is the list of TSs, ranked by their total frquency, predicted by a bootstrapped sampling(100 times) of classification random forest
+```
+
+```{r}
 
 
 #overlapping between CGC labeled TS and the predicted TS
