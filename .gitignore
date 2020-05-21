@@ -8,5 +8,8 @@
 *.Trashes
 ehthumbs.db
 Thumbs.db
+<<<<<<< HEAD
 *.Rhistory
-.RData
+=======
+*.Rhistory
+>>>>>>> 5a331be1c40b572efa5ca7d60649240e87eb6a10
