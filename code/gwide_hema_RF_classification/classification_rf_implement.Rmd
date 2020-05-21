@@ -6,25 +6,22 @@ output: html_document
 ---
 
 ##Install relevant packages
-```{r}
-library(randomForest)  
-library(caret)  
-library(ggplot2) 
-library(dplyr)
-library(tibble)
-library(stats)
+```{r,results='hide'}
+library(randomForest)  #ML
+library(caret)  #ML
+library(ggplot2) #plotting
+library(dplyr) #data manipulation
+library(tibble) #data manipulation
+library(stats) #data manipulation
 ```
 
 
 ##Read in files
 ```{r}
-gwide <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm.csv")  #duplicated removed
+
 gwide_knn <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn.csv") 
-
+str(gwide_knn)
 ```
-
-
-##Training and testing data split
 
 some data cleaning
 ```{r}
@@ -36,7 +33,8 @@ head(gwide_knn)
 ```
 
 
---------------------------
+Content below are for non-bootstrapped version, We decided to use bootstrapping, so skip this section plz
+-----------------------------------------------------------------------------------------
 
 split for testing and training data, training data are every gene not on chr 7, tetsing data are everything on chr7
 ```{r}
@@ -202,7 +200,7 @@ auc(actual = ifelse(gwide_test$TS_status == 1, 1, 0),
 
 
 
-----------------
+-----------------------------------------------------------------------------------------------
 
 
 Use the label from Cancer Gene Census as the ground truth instead of the TSGene
@@ -254,6 +252,7 @@ train_data_generate <- function(train_data = gwide_train_CGC){
         
         return(gwide_train_balance_CGC )
 }
+
 
 #run the function 100 times and store the resulted training data in a list
 balanced_train_list  <- lapply(seq_len(100),function(x) train_data_generate(gwide_train_CGC))
@@ -380,11 +379,12 @@ boxplot(mean_OOB_list)#visualize distribution of OOB values
 ##Predict the test set
 ```{r}
 set.seed(57835678)
+#' @rf_list: list of random forest models from bootstrapping
 class_rf_pred <- function(rf_list, test_data){
         for (i in 1:length(rf_list)){
                 test_data <- cbind(test_data,predict(object = rf_list[[i]],newdata = test_data,type = "class")) #attach all the prediction results for every bootstrapp to the test data
+        } 
         return(test_data)
-} 
 }
 gwide_test_CGC_new <- class_rf_pred(class_rf_list,gwide_test_CGC)
 
@@ -406,22 +406,27 @@ colnames(rf_class_result) = "TS_freq"
 rf_class_result <- rownames_to_column(rf_class_result,var = "Gene")
 rf_class_result <- rf_class_result[order(rf_class_result$TS_freq,decreasing = TRUE),]
 rf_class_result #this is the list of TSs, ranked by their total frquency, predicted by a bootstrapped sampling(100 times) of classification random forest
+
+#export the predicted hits
+write.csv(rf_class_result, "/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv")
 ```
 
+
+Examine overlaps
 ```{r}
-
-
 #overlapping between CGC labeled TS and the predicted TS
-high_conf_hits <- as.data.frame(pred_gene$Gene[pred_gene$Gene %in% CGC_TS$Gene])
+high_conf_hits <- as.data.frame(rf_class_result$Gene[1:110][rf_class_result$Gene[1:110] %in% CGC_TS$Gene])
 high_conf_hits
 
 #overlapping between Jeremy's 96 genes with the predicted TS
-jeremy_genes_overlap <- as.data.frame(pred_gene$Gene[pred_gene$Gene %in% jeremy_genes$Gene])
+jeremy_genes_overlap <- as.data.frame(rf_class_result$Gene[1:110][rf_class_result$Gene[1:110] %in% jeremy_genes$Gene])
 jeremy_genes_overlap
 #29 overlaps
 
-#export predited TS
-write.csv(pred_gene,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC.csv")
+#import the predicted result using only one sampling(no bootstrapping)
+pred_gene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC.csv",stringsAsFactors = FALSE)
+
+as.data.frame(rf_class_result$Gene[1:110][rf_class_result$Gene[1:110] %in% pred_gene$Gene])
 ```
 
 

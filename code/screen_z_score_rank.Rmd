@@ -1,0 +1,143 @@
+---
+title: "combined_z_score"
+author: "Weihan Liu"
+date: "10/05/2020"
+output: pdf_document
+        toc = TRUE
+---
+1.Combine the by-plate proliferation and Erythrocyte differentiation z scores into a unified Z score
+2.
+
+```{r,results='hide'}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(readr)
+library(tibble)
+```
+
+
+#combined the by-plate proliferation and Erythrocyte differentiation z scores into a unified Z score
+
+##Read in files comtaining raw count of proliferation after normalizing to the interpolated ladder, and the erythrocyte differention raw data(this is a Ery marker ratio, so no interpolation normalization)
+```{r}
+setwd("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc")
+pro.byplate <- read.csv("edited_pro_raw_interpolated_normalized.csv",stringsAsFactors = FALSE)
+ery.byplate <- read.csv("edited_ediff_raw.csv",stringsAsFactors = FALSE)
+head(ery.byplate)
+
+pro.byplate <- select(pro.byplate, -c("X","Mean.editing","Well.ID"))
+```
+
+##do a PCA analysis to see if there's batch effect between plates
+```{r}
+library(ggfortify)
+#replace every NA values with 0, just for PCA plotting 
+ery.byplate.pca.df <- ery.byplate
+ery.byplate.pca.df[is.na(ery.byplate.pca.df)] = 0
+pro.byplate.pca.df<- pro.byplate
+pro.byplate.pca.df[is.na(pro.byplate.pca.df)] = 0
+
+pca_ery <- prcomp(ery.byplate.pca.df[2:9], scale. =  TRUE)
+pca_pro <- prcomp(pro.byplate.pca.df[2:(ncol(pro.byplate.pca.df)-1)],scale. = TRUE)
+autoplot(pca_ery,data = pro.byplate)
+autoplot(pca_pro)
+```
+
+
+## For erythrocyte differentiation score, Within each plate, normalize the raw data for each gene to AAVS1 by substracting each gene's readout value - AAVS1's value. 
+In this case, AAVS1 will have a value of 0
+```{r}
+for (i in 2:ncol(ery.byplate)){
+        ery.byplate[i] = ery.byplate[i] - ery.byplate[1,i]
+}
+ery.byplate <- ery.byplate %>% mutate(avg_exp <- rowMeans(ery.byplate[2:9],na.rm = TRUE))
+#revert the sign of the average erythrocyte score for combining later. The negative ery scores here means the erythrocyte differentiation is down after KO the gene, so these are putative myeloid TS. We want to revert their score to positive, just to be easier to combine with the proliferation score later.
+ery.byplate$avg_exp <- -ery.byplate$avg_exp
+```
+
+
+## For proliferation scores, within each plate, normalize the interpolated data to AAVS1
+```{r}
+for (i in 2:ncol(pro.byplate)){
+        pro.byplate[i] = pro.byplate[i] - pro.byplate[1,i]
+}
+pro.byplate <- pro.byplate %>% mutate(avg_pro <- rowMeans(pro.byplate[2:ncol(pro.byplate)],na.rm = TRUE))
+str(pro.byplate)
+pro.byplate <- rename(pro.byplate,avg.pro = "avg_pro <- rowMeans(pro.byplate[2:ncol(pro.byplate)], na.rm = TRUE)")
+```
+
+
+combine the proliferation and erythrocyte average score into a new dataframe
+```{r}
+comb_df <- read.csv("edited_both_z_avg_exp_comb.csv",stringsAsFactors = FALSE)
+comb_df <- comb_df %>% inner_join(pro.byplate[,c("Name","avg.pro")],by = "Name") %>%
+        inner_join(ery.byplate[,c("Name","avg_exp")],by = "Name")
+
+
+rownames(comb_df) <- comb_df[,1]
+comb_df <- select(comb_df,-"Name")
+#normalize your data onto 0:1 range, to get rid of directionality
+normalize <- function(df){
+        apply(df,2,function(x) (x - min(x))/(max(x)-min(x)))
+}
+        
+comb_df_norm <- as.data.frame(normalize(comb_df))
+
+#create combined z score and avg score columns
+comb_df_norm$z_comb <- comb_df_norm$Pro.z+comb_df_norm$E.diff.z
+#comb_df_norm$avg_comb <- comb_df_norm$
+comb_df_norm$avg_comb <- comb_df_norm$avg.pro + comb_df_norm$avg.ery
+
+View(comb_df)
+View(comb_df_norm)
+
+str(comb_df_norm)
+```
+
+save the file
+```{r}
+write.csv(comb_df_norm,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv")
+```
+
+
+
+
+Plotting
+```{r}
+library(ggrepel)
+#obtain the top ranked genes by both z score and 
+comb_df_norm <- rownames_to_column(comb_df_norm, var = "Gene")
+
+
+#label the top 20% gene by combined z score
+highlight_z_comb_df <- top_frac(comb_df_norm,0.20,z_comb)
+comb_df_norm %>% ggplot(aes(x = Pro.z,y = E.diff.z)) + 
+        geom_point(alpha = 0.3) +
+        geom_point(data=highlight_z_comb_df, aes(x = Pro.z,y = E.diff.z), color='red',size=2)+
+        geom_text_repel(aes(label=ifelse(comb_df_norm$z_comb %in% (top_frac(comb_df_norm,0.20,z_comb)$z_comb),as.character(Gene),''))) +
+        ggtitle("Top 20% genes ranked by combined z scores") +
+        labs(x = "proliferation z score", y = "erythrocyte differentiation z score") +
+        theme_bw() +
+        theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+       
+
+#label the top 20% gene by combined average expression
+highlight_avg_exp_comb_df <- top_frac(comb_df_norm,0.2,avg_comb)
+comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) + 
+        geom_point(alpha = 0.3) +
+        geom_point(data = highlight_avg_exp_comb_df, aes(x = avg.pro,y = avg.ery), color = "red", size = 2)+
+        geom_text_repel(aes(label=ifelse(comb_df_norm$avg_comb %in% (top_frac(comb_df_norm,0.20,avg_comb)$avg_comb),as.character(Gene),''))) +
+        ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
+        labs(x = "average proliferation", y = "average erythrocyte differentiation") +
+        theme_bw() +
+        theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+        
+
+```
+
+
+Overlapping with the machine learning classification result and CDR result

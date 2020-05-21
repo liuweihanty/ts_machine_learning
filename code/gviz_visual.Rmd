@@ -19,37 +19,78 @@ library(dplyr)
 
 Load the lists of interest:
 1) list of TS from regression RF --> 109 
-2) list of TS from classfication RF --> 108
+2) list of TS from classfication RF --> 131
 3) list of TS from data mining by Jeremy
-
+4).List of CDR(commonly deleted region) genes --> 77
+5).List of experimental hits from Jeremy's screen
 
 genome track --> hg38
+
+```{r}
+setwd("/Users/weihan/Documents/GitHub/ts_machine_learning")
+```
+
+1. list of ts from regression RF
 ```{r load lists}
-#1. list of ts from regression RF
 regrf.complete <- read.table("../data/gwide_hema_regression/ranked_result.csv", sep = ",", header = TRUE)
 regrf.complete <- regrf.complete[order(regrf.complete$Gene), ]
 regrf <- regrf.complete %>% filter(pred_prob > 0.3)
 regrf <- data.frame(regrf, rank = c(1:109))
 regrf.ts <- as.vector(regrf$Gene)
-
-#2. list of ts from classification RF
-classrf <- read.csv("../data/gwide_hema_classification/pred_hits_CGC.csv", sep = ",", header = TRUE)
-classrf.ts <- as.vector(classrf$Gene)
-
-#3. list of TS from data mining by Jeremy
-jeremy <- read.csv("../data/96ts_work_data.csv", sep = ",", header = TRUE)
-jeremy.ts <- as.vector(jeremy$Gene)
-
-#4. overlap list of jeremy's data mining & classificaiton rf
-classandjeremy.ts <- unique(as.vector(c(classrf.ts, jeremy.ts)))
-
-#5. overlap list of jeremy's data mining & regression rf
-regandjeremy.ts <- unique(as.vector(c(regrf.ts, jeremy.ts)))
 ```
 
-```{r biomaRt function}
-#define a function to retrieve chromosomal coordinate information from biomaRt
+2.list of ts from classification RF
+```{r}
 
+classrf <- read.csv("../data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE) %>%
+        dplyr::select(-"X") 
+classrf.ts <- as.vector(classrf$Gene)
+classrf.ts
+
+```
+
+3.list of TS from data mining by Jeremy
+```{r}
+jeremy <- read.csv("../data/96ts_work_data.csv", sep = ",", header = TRUE)
+jeremy.ts <- as.vector(jeremy$Gene)
+```
+
+4.List of CDR genes
+```{r}
+CDR_genes <- read.csv("../data/CDR_list.csv",stringsAsFactors = FALSE,header = FALSE) 
+colnames(CDR_genes) = "CDR_gene"
+CDR.genes <- as.vector(CDR_genes$CDR_gene)
+```
+5.List of Experimental hits, ranked by combined score
+```{r}
+exp_hits <- read.csv("../data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+str(exp_hits)
+exp.hits <- exp_hits %>%
+        dplyr::select("Gene","z_comb") %>%
+        #top_frac(0.25) %>%
+        dplyr::select("Gene")
+exp.hits <- as.vector(exp.hits$Gene)
+
+exp.hits
+
+```
+
+Write a function to obtain overlaps between two gene sets
+```{r}
+overlap <- function(list1, list2){
+        overlap <- list1[(list1 %in% list2)]
+        return(overlap)
+}
+
+#overlap between experimental hits and ML classification prediction
+ML_class_exp_overlap <- overlap(classrf.ts,exp.hits)
+ML_class_exp_overlap
+
+```
+
+
+define a function to retrieve chromosomal coordinate information from biomaRt
+```{r biomaRt function}
 data_retrieve <- function(gene, mart) {
   
   # input a vector of gene names
@@ -101,6 +142,18 @@ classrf.result <- data_retrieve(classrf.ts, mart.hs)
 jeremy.result <- data_retrieve(jeremy.ts, mart.hs)
 classandjeremy.result <- data_retrieve(classandjeremy.ts, mart.hs)
 regandjeremy.result <- data_retrieve(regandjeremy.ts, mart.hs)
+
+#create result dataframe from the experiment hits 
+exp.hits.result <- data_retrieve(exp.hits,mart.hs)
+#attach the combined z score
+exp_hits <- dplyr::rename(exp_hits,hgnc_symbol = Gene)
+exp.hits.result <- exp.hits.result %>% inner_join(exp_hits[c("hgnc_symbol","z_comb")],by = "hgnc_symbol")
+
+#create the result dataframe from ML classification hits
+classrf.hits.result <- data_retrieve(classrf.ts,mart.hs)
+#attach the ML score 
+classrf <- dplyr::rename(classrf,hgnc_symbol = Gene)
+classrf.hits.result <- classrf.hits.result %>% inner_join(classrf,by = "hgnc_symbol")
 ```
 
 ```{r Overall Plot function}
@@ -696,3 +749,97 @@ cdr_zoomin_plot_w_pred_prob(regrf.complete.result, "Regression RF CDR3 with Pred
 ```{r}
 regrf.complete
 ```
+
+
+define a function that takes 2 list and 1 overlayed list with unique entries and return an array with 1s and 2s
+```{r overlay function}
+#define a function that takes 2 list and 1 overlayed list with unique entries and return an array with 1s and 2s
+
+overlay_count <- function(overlay_list, list1, list2) {
+  result <- c()
+  
+  #if an item in the overlayed list is in both list, then the entry will be 
+  for (item in overlay_list) {
+    if ((item %in% list1) & (item %in% list2)) {
+      result <- append(result, 2)
+    } else {
+      result <- append(result, 1)
+    }
+  }
+  return(result)
+}
+
+classandjeremy.ts <- unique(as.vector(c(classrf.ts, jeremy.result$hgnc_symbol)))
+classandjeremy.count <- overlay_count(classandjeremy.ts, classrf.ts, jeremy.result$hgnc_symbol)
+
+regandjeremy.ts <- unique(as.vector(c(regrf.ts, jeremy.result$hgnc_symbol)))
+regandjeremy.count <- overlay_count(regandjeremy.ts, regrf.ts, jeremy.result$hgnc_symbol)
+```
+
+
+```{r, fig.width= 7, fig.height = 8}
+chr <- 'chr7'
+gen <- 'hg38'
+#our two result dataframes are:
+#exp.hits.result
+#classrf.hits.result
+
+#create the GRange object for ML result
+data_classrf <- with(classrf.hits.result, GRanges(chr, IRanges(classrf.hits.result$start_position,
+                                            classrf.hits.result$end_position),
+                                            strand = "*",
+                                            genome = gen,
+                               #classrf.hits.result$strand,
+                        count = classrf.hits.result$TS_freq))
+#create a GRange object for experimental hits result
+data_exp <- with(exp.hits.result, GRanges(chr, IRanges(exp.hits.result$start_position,
+                                            exp.hits.result$end_position),
+                                          strand = "*",
+                                          genome = gen,
+                               #exp.hits.result$strand,
+                               count = exp.hits.result$z_comb))
+
+atrack1 <- AnnotationTrack(data_classrf,name = "Genes")
+atrack2 <-AnnotationTrack(data_exp,name = "Genes")
+                            
+gtrack <- GenomeAxisTrack()
+  
+itrack <- IdeogramTrack(genome = gen, chromosome = chr)
+
+# data <- with(result, GRanges(chr, IRanges(result$start_position,
+#                                           result$end_position),
+#                                        strand = "*",
+#                                        count=result$count))
+                        
+dtrack1 <- DataTrack(data_classrf,name = "classification rf score")
+dtrack2 <- DataTrack(data_exp, name = "experimental combined score")
+
+ot <- OverlayTrack(trackList=list(dtrack1, dtrack2))
+
+cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
+                        end = c(140078203, 102627325, 148972761))
+
+
+ht1 <- HighlightTrack(trackList=list(atrack1, dtrack1), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+
+ht2 <- HighlightTrack(trackList=list(atrack1, dtrack2), 
+                       start = cdr_region$start, 
+                       end = cdr_region$end,
+                       chromosome = chr,
+                       genome = gen)
+
+ylims <- extendrange(range(c(values(dtrack1), values(dtrack2))))
+
+
+plotTracks(list(itrack,gtrack,ht1,dtrack1), type = "p")
+plotTracks(list(itrack,gtrack,ht2,dtrack2), type = "p") #ht1 contains all genes on chr7, so we still use it here
+
+#plot side by side
+plotTracks(list(itrack, gtrack, ot), #from = lim[1], to = lim[2], 
+           ylim = ylims, type = c("smooth", "p"))
+```
+

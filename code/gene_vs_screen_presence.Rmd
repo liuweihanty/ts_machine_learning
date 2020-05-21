@@ -1,0 +1,66 @@
+---
+title: "gene_vs_screen_presence"
+author: "Weihan Liu"
+date: "18/05/2020"
+output: html_document
+---
+
+Plot all 96 genes from Jeremy's datamining efforts vs all the screens he used.
+
+Goal:
+1).visualzie the genes that are identified to be putative TS by the most screens
+2).Determine which screen contributes the most to datamining
+
+```{r}
+library(pheatmap)
+```
+
+```{r}
+gene_vs_screen <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/summary_analysis/gene_vs_screen_presence.csv",stringsAsFactors = FALSE) %>%
+        dplyr::select(-c("X")) %>%
+        dplyr::rename(apperance = X..of.screens) %>%
+        arrange(desc(apperance))
+        
+#replace all "Yes" with 1 and all other cells with 0
+gene_vs_screen[,2:14] <- ifelse(gene_vs_screen[,2:14] == "Yes",1,0)
+gene_vs_screen <- column_to_rownames(gene_vs_screen,var = "Gene")     
+
+str(gene_vs_screen)
+
+#Examine which screen has the highest number of genes 
+as.data.frame(colSums(gene_vs_screen)) %>%
+                                                rownames_to_column(var = "screen") %>%
+                                                arrange(desc(colSums(gene_vs_screen)))
+#order the columns in the dataframe by their colsums, descending order.(for plottig)
+gene_vs_screen <- gene_vs_screen[,c("Weissman.2016","Elledge.2018",
+                  "Wallace.2016","Doench.2018",
+                  "Sabatini.2015.GTS","Elledge.2013",
+                  "GCG",
+                  "Sabatini.2015","Weissman.2014",
+                  "Campbell.2018","Sabatini.2017",
+                  "Chen.2019","Brummelkamp.2015","apperance")]
+```
+
+Plot heatmap
+```{r,fig.height=18,fig.width=15}
+pheatmap(as.matrix(gene_vs_screen[1:13]),
+        scale = "none",
+        cexRow = 0.3,cexCol = 3,
+        cellwidth = 50,
+        cellheight = 11,
+         color = c("#d7ebff","#ffd452"),
+         #color = c("#ffe4d8","#ff5e4f"), deep and shallow red  
+        # color = c("#EBF6FF","#64aaff"),  #deep and shallow blue                
+        #border_color = "black",
+        cluster_cols = FALSE,
+        cluster_rows = FALSE,
+        treeheight_col = 0, #get rid of the dendrogram
+        legend_breaks = c(0,1),
+        legend_labels = c("absent in screen","present in screen"),
+        fontsize_col = 20,
+        angle_col = 45)
+
+
+```
+
+

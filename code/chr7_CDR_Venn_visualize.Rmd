@@ -8,58 +8,219 @@ Examine the overlap between
 1.classification predicted TS
 2.regression predicted TS
 3.CGC labeled TS
-4.Elledge labeled TS
-5.Jeremy datamined TS
-6.Jeremy CDR genes
+4.TSGene labeled TS
+5.Elledge labeled TS
+6.Jeremy datamined TS
+7.CDR genes
+8.Jeremy experimental results
+
 ```{r}
-#predicted TS from classification random forest
-colnames(pred_gene) = "rf_class_gene"
-pred_gene 
-#predicted TS from regression random forest, we will use a probability of 0.3 as a cutoff
-top_ranked_result  <- ranked_result %>% filter(pred_prob > 0.3)
-names(top_ranked_result)[names(top_ranked_result) == "Gene"] = "rf_reg_gene"
-top_ranked_result 
-
-#CGC labeled TS on chr7
-CGC_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
-CGC_TS <- select(CGC_TS,c("Gene.Symbol","Genome.Location"))
-CGC_TS_chr7 <- filter(CGC_TS,grepl("^7:",Genome.Location))
-colnames(CGC_TS_chr7) <- c("Gene","location")
-names(CGC_TS_chr7)[names(CGC_TS_chr7) == "Gene"] = "CGC_gene"
-CGC_TS_chr7
-
-#Elledge TS
-Elledge_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Elledge_2013_TS.csv",stringsAsFactors = FALSE)
-Elledge_TS <- Elledge_TS %>% select(c("Gene","TUSON_q_value_TSG","TSG_Probability_LASSO","Chromosome")) %>% filter(Chromosome == "7")
-Elledge_TS <- Elledge_TS %>% arrange(desc(TSG_Probability_LASSO)) %>% filter(TSG_Probability_LASSO > 0.3)
-names(Elledge_TS)[names(Elledge_TS) == "Gene"] = "Elledge_gene"
-Elledge_TS
-
-#Jeremy datamined TS
-names(jeremy_genes)[names(jeremy_genes) == "Gene"] = "jeremy_gene"
-jeremy_genes
-
-#read in Jeremy's 77 CDR genes, these genes are the ones
-CDR_genes <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE)
-colnames(CDR_genes) <- "Gene"
-names(CDR_genes)[names(CDR_genes) == "Gene"] = "CDR_gene"
-CDR_genes
-
-ts_all <- merge(merge(merge(merge(merge(pred_gene,top_ranked_result, by = 0, all = TRUE),
-      CGC_TS_chr7,by = 0,all = TRUE),
-      Elledge_TS,by = 0,all = TRUE),
-      jeremy_genes,by=0,all=TRUE),
-      CDR_genes,by = 0,all = TRUE)
-
-
-
-
-      
-ts_all <- ts_all[c("rf_class_gene","rf_reg_gene","CGC_gene","Elledge_gene","jeremy_gene","CDR_gene")] 
-glimpse(ts_all)
+library(VennDiagram)
 ```
 
-Do Venn Diagram
+#Create list of genes from each category of interest
+1.predicted TS from classification random forest after boostrapping
+```{r}
+class_hits <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE)
+class_hits <- dplyr::rename(class_hits, class_gene = Gene) %>% 
+         top_n(130) %>%
+        dplyr::select(-c("X","TS_freq")) 
+class_hits
+```
+
+
+2.predicted TS from regression random forest, we will use a probability of 0.3 as a cutoff
+```{r}
+regression_hits  <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_regression/ranked_result.csv",stringsAsFactors = FALSE)
+regression_hits <- regression_hits %>% 
+        #filter(pred_prob > 0.3) %>%
+        dplyr::select(c("Gene","pred_prob")) %>% 
+        dplyr::rename(Regression_gene = Gene)
+regression_hits
+```
+
+
+3.CGC labeled TS on chr7(our training "gold standard")
+```{r}
+CGC_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
+CGC_TS <- select(CGC_TS,c("Gene.Symbol","Genome.Location"))
+CGC_TS_chr7 <- filter(CGC_TS,grepl("^7:",Genome.Location)) %>%
+        select("Gene.Symbol")
+colnames(CGC_TS_chr7) <- "CGC_gene"
+CGC_TS_chr7
+```
+4.TSGene databased labeled TS
+```{r}
+TS_Gene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/TSGene_all.csv",stringsAsFactors = FALSE) %>%
+        dplyr:: filter(Chromosome == "7") %>%
+        dplyr::select("GeneSymbol") %>%
+        dplyr::rename(Gene = GeneSymbol) %>%
+        dplyr::mutate(TS_Gene_status = 1)
+```
+
+
+5.Elledge TS
+```{r}
+Elledge_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Elledge_2013_TS.csv",stringsAsFactors = FALSE)
+Elledge_TS <- Elledge_TS %>% 
+        dplyr::select(c("Gene","TUSON_q_value_TSG","TSG_Probability_LASSO","Chromosome")) %>% 
+        dplyr::filter(Chromosome == "7") %>%
+        dplyr::arrange(desc(TSG_Probability_LASSO)) %>%
+        #filter(TSG_Probability_LASSO > 0.3) %>%
+        dplyr::select(c("Gene","TSG_Probability_LASSO")) %>%
+        dplyr::rename(Elledge_TSG_Prob_LASSO = TSG_Probability_LASSO)
+
+Elledge_TS
+```
+
+
+6..Jeremy datamined TS
+```{r}
+jeremy_ts_datamine <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/96ts_work_data.csv") %>%
+        dplyr::select("Gene") %>%
+        mutate(Jeremy_datamine = 1)
+
+```
+
+
+7.genes on commonly deleted region(CDR)
+```{r}
+CDR_genes <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE,header = FALSE) %>%
+        dplyr::rename(Gene = V1) %>%
+        dplyr::mutate(CDR_gene = 1)
+
+```
+
+8.genes from experiment hits
+```{r}
+comb_ranking <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+
+#select the top 25 % genes ranked by the combined z scor(Ebert method)
+comb_ranking_top25_z <- comb_ranking %>%
+        select(c("Gene","z_comb")) %>%
+        top_frac(0.25)
+#select teh top 25% of genes ranked by the combined normalized average expression
+comb_ranking_top25_avg <- comb_ranking %>% 
+        select(c("Gene","avg_comb")) %>%
+        top_frac(0.25)
+
+```
+
+
+combine all gene sets together into a master table
+```{r}
+#first, reformating each gene sets, adding relavent information columns, for joining them
+
+#read in the protein coding gene list of chromosome 7
+chr7_all_gene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/Chr7_coding.csv",stringsAsFactors = FALSE) %>% 
+       dplyr:: select("Gene")
+
+#1.read in the ML classification result(with bootstrapping): classrf_result
+classrf_result <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE) %>%
+        dplyr::select(-"X") %>%
+        dplyr::rename(class_rf_score = TS_freq)
+#2.regression RF result is in here: regression_hits
+regression_hits <- regression_hits %>% dplyr::rename(Gene = Regression_gene,
+                                                     regression_prob = pred_prob)
+
+#3.CGC labeled TS: CGC_TS_chr7
+CGC_TS_chr7 <- CGC_TS_chr7 %>% dplyr::rename(Gene = CGC_gene)
+                                             
+CGC_TS_chr7$CGC_TS_status = 1
+
+#4.TSgene labeled TS: TS_Gene
+
+#5.Elledge 2013 ranked TS: Elledge_TS
+
+#6.Jeremy datamined TS: jeremy_ts_datamine
+
+#7.CDR genes: CDR_genes
+
+#8.Jeremy experimental genes(with averaged expression score(my method))
+comb_ranking_avg <- comb_ranking %>% 
+        dplyr::select(c("Gene","avg_comb")) %>%
+        dplyr::rename(exp_comb_score = avg_comb)
+
+
+#merge every data table using FULL join
+library(tidyverse)
+Chr7_TS_master <- list(chr7_all_gene,
+     classrf_result,
+     regression_hits,
+     CGC_TS_chr7,
+     TS_Gene,
+     Elledge_TS,
+     jeremy_ts_datamine,
+     CDR_genes,
+     comb_ranking_avg
+     )  %>%
+        reduce(full_join,by= "Gene")
+
+write.csv(Chr7_TS_master,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Chr7_TS_master.csv")
+
+```
+
+do a heatmap of overlapping among these columns
+```{r, fig.height=20}
+#copy a dataframe, just for plotting the heatmap
+Chr7_TS_master_hm <- Chr7_TS_master
+
+
+------------ #this function to be finished
+#write a functionm to binarilize the continuous variables 
+#' @dat: the datafrmae to work with
+#' @old_col: the name of the old continuous column that you want to binarize
+#' @new_col: the name of the new binary column that you want to create
+#' @pct: how many percentage of the top ranked rows you want to label as 1(the rest are 0). The range of pct is 0-1
+binary_col <- function(data,old_col,new_col,pct){
+        data$new_col <- with(data,ifelse(Gene %in% top_frac(data,wt = data$old_col,pct)$Gene,1,0))
+        return(data)
+}
+
+binary_col(data = Chr7_TS_master_hm,old_col=regression_prob,new_col=regression_rf_status,pct = 0.25)
+--------------
+        
+#binarinize the classification RF score column
+Chr7_TS_master_hm$class_rf_status = with(Chr7_TS_master_hm, ifelse(Gene %in% top_frac(Chr7_TS_master_hm,wt = Chr7_TS_master_hm$class_rf_score,0.25)$Gene,1,0))
+
+#binarinize the regression RF score column
+Chr7_TS_master_hm$regression_rf_status = with(Chr7_TS_master_hm, ifelse(Gene %in% top_frac(Chr7_TS_master_hm,wt = Chr7_TS_master_hm$regression_prob,0.25)$Gene,1,0))
+
+#binarize the Elledge_TSG_Prob_LASSO column
+Chr7_TS_master_hm$elledge_lasso_status = with(Chr7_TS_master_hm, ifelse(Gene %in% top_frac(Chr7_TS_master_hm,wt = Chr7_TS_master_hm$Elledge_TSG_Prob_LASSO,0.25)$Gene,1,0))
+
+#binarize the exp_comb_score column
+Chr7_TS_master_hm$exp_hits_status = with(Chr7_TS_master_hm, ifelse(Gene %in% top_frac(Chr7_TS_master_hm,wt = Chr7_TS_master_hm$exp_comb_score,0.25)$Gene,1,0))
+
+#delete all the continuous columns and replace all NA with 0
+Chr7_TS_master_hm <- Chr7_TS_master_hm %>% dplyr::select(-c("class_rf_score",
+                                "regression_prob",
+                                "Elledge_TSG_Prob_LASSO",
+                                "exp_comb_score")) 
+                                
+Chr7_TS_master_hm[is.na(Chr7_TS_master_hm)] = 0
+Chr7_TS_master_hm <- Chr7_TS_master_hm[!duplicated(Chr7_TS_master_hm$Gene),]
+rownames(Chr7_TS_master_hm) <- Chr7_TS_master_hm$Gene
+Chr7_TS_master_hm <- dplyr::select(Chr7_TS_master_hm,-"Gene")
+
+Chr7_TS_master_hm <- rownames_to_column(Chr7_TS_master_hm,var = "Gene") 
+
+Chr7_TS_master_hm_exp <- filter(Chr7_TS_master_hm,exp_hits_status == 1)
+Chr7_TS_master_hm_exp <- column_to_rownames(Chr7_TS_master_hm_exp, var = "Gene")
+
+library(pheatmap)
+pheatmap(as.matrix(Chr7_TS_master_hm_exp),margins = c(10,3),scale = "none",
+        cexRow = 0.3,cexCol = 3,
+        cellwidth = 50,
+        cellheight = 10)
+
+
+```
+
+
+
+#Do Venn Diagram
+##Two-way Venn
 number of overlap between rf_class_gene and jeremy 96 TS genes
 ```{r}
 library(VennDiagram)
@@ -96,20 +257,63 @@ draw.pairwise.venn(area1 = 109, area2 = 96, cross.area = 30, category = c("regre
     0), cat.dist = rep(0.025, 2), scaled = FALSE)
 ```
 
-number of overlap between rf_class_gene and jeremy 77 CDR genes
+
+number of overlap between CDR and experimental hits(ranked by z score)
+```{r}
+CDR_exp <- c()
+for (i in 1:length(CDR_genes$CDR_gene)) {
+        if (CDR_genes$CDR_gene[i] %in% as.character(comb_ranking_top25_z$Gene)){
+                CDR_exp <- c(CDR_exp,class_hits$class_gene[i])
+        }
+      
+}
+length(CDR_exp)#17 overlapping genes
+
+grid.newpage()
+draw.pairwise.venn(area1 = 26, area2 = 131, cross.area = 6, category = c("top 25% from experiment(by norm val)", 
+    "classification RF prediction"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2), cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+
+
+number of overlap between ML classification and experimental top hits
+```{r}
+#experimental top hits ranked by both combined z score and combined avg_exp (do both)
+rf_class_exp <- c()
+for (i in 1:length(class_hits$class_gene)) {
+        if (class_hits$class_gene[i] %in% as.character(comb_ranking_top25_avg$Gene)){
+                rf_class_exp <- c(rf_class_exp,class_hits$class_gene[i])
+        }
+      
+}
+
+rf_class_exp  #6 overlapping genes
+length(class_hits$class_gene) #131
+length(comb_ranking_top25_avg$Gene) #26
+
+grid.newpage()
+draw.pairwise.venn(area1 = 26, area2 = 131, cross.area = 6, category = c("top 25% from experiment(by norm val)", 
+    "classification RF prediction"),lty = rep("blank", 
+    2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2), cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+
+number of overlap between ML classification hits and CDR genes
 ```{r}
 rf_class_CDR <- c()
 for (i in 1:length(CDR_genes$CDR_gene)) {
-        if (CDR_genes$CDR_gene[i] %in% as.character(pred_gene$rf_class_gene)){
+        if (CDR_genes$CDR_gene[i] %in% as.character(class_hits$class_gene)){
                 rf_class_CDR <- c(rf_class_CDR,CDR_genes$CDR_gene[i])
         }
       
 }
-rf_class_CDR 
-
+rf_class_CDR  #19 overlapping genes
 grid.newpage()
-draw.pairwise.venn(area1 = 107, area2 = 76, cross.area = 14, category = c("classification random forest prediction", 
-    "CDR genes"),lty = rep("blank", 
+draw.pairwise.venn(area1 = 77, area2 = 131, cross.area = 19, category = c("CDR genes", 
+    "classification RF prediction"),lty = rep("blank", 
     2), fill = c("light blue", "pink"), alpha = rep(0.5, 2), cat.cex = c(1,1),cex = c(2,2,2), cat.pos = c(0, 
     0), cat.dist = rep(0.025, 2), scaled = FALSE)
 ```
@@ -150,6 +354,7 @@ draw.pairwise.venn(area1 = 107, area2 = 109, cross.area = 34, category = c("clas
 ```
 
 
+##Three-way Venn
 Now let's do three-way comparison between the data mined 96 TS, CDR genes and predicted genes
 number of overlap between rf_class_gene,jeremy 96 TS genes and CDR genes
 ```{r}
@@ -224,6 +429,38 @@ draw.triple.venn(area1 = 107, area2 = 109, area3 = 76, n12 = 34, n23 = 9, n13 = 
     fill = c("skyblue", "pink1", "mediumorchid"))
 ```
 
+
+Three way Venn diagram of CDR, experimental top ranked genes and machine learning classification hits
+
+a.Experimental hits has two ranking criterias:
+1.comb_ranking_top25_z
+2.comb_ranking_top25_avg
+
+b. CDR genes: CDR_genes
+c.ML classification genes:class_hits
+```{r}
+CDR_class_exp <- c()
+for (i in 1:length(CDR_genes$CDR_gene)) {
+        if ((CDR_genes$CDR_gene[i] %in% (as.character(class_hits$class_gene))) & (CDR_genes$CDR_gene[i] %in% as.character(comb_ranking_top25_avg$Gene))){
+                CDR_class_exp <- c(CDR_class_exp,CDR_genes$CDR_gene[i])
+        }
+      
+}
+
+CDR_class_exp # 5 overlapps
+#area1: CDR
+#area2: RF class
+#area3: exp
+
+
+grid.newpage()
+draw.triple.venn(area1 = 77, area2 = 131, area3 = 26, n12 = 19, n23 = 6, n13 = 18, 
+    n123 = 4, category = c("CDR", "classification RF", "experimental hits(by comb exp)"), lty = "blank", 
+    fill = c("skyblue", "pink1", "mediumorchid"))
+
+```
+
+##Four-way Venn
 Now let's do four-way comparison between the data mined 96 TS, CDR genes,classification rf predicted and regression rf predicted genes
 ```{r}
 class_reg_96_ts_CDR <- c()
@@ -241,43 +478,30 @@ draw.quad.venn(area1 = 107, area2 = 109, area3 = 96, area4 = 76, n12 = 34,n13 = 
 ```
 
 
-Now let's do four-way comparison between the data mined 96 TS, CDR genes,classification rf predicted and regression rf predicted genes
-
-
-
-
-Use UPSETR package to interset all datasets
+Scatter plot examine the correlation betweenc combined Z score and combined average expression score, to check their consistency
 ```{r}
+#read in the full set of experimental genes
+comb_ranking_z <- comb_ranking %>%
+        dplyr::select(c("Gene","z_comb"))
 
+comb_ranking_avg <- comb_ranking %>% 
+        dplyr::select(c("Gene","avg_comb"))
+
+
+overlap_qc <- inner_join(comb_ranking_z,comb_ranking_avg,by = "Gene")
+
+
+
+overlap_qc %>% ggplot(aes(x = avg_comb, y = z_comb)) + geom_point() +
+        coord_cartesian(xlim = c(0,2), ylim = c(0, 2)) + 
+        geom_smooth(method='lm', formula= y~x) +
+        geom_text_repel(aes(label = Gene),
+                        segment.size  = 0.1,
+                        size = 1.8,
+                        force = 30) +
+        theme_classic(base_size = 16)
+lm(z_comb ~ avg_comb, overlap_qc) 
 ```
 
 
-Install Gviz
-```{r}
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install("Gviz")
-```
-
-```{r}
-library(Gviz)
-```
-
-```{r}
-library(GenomicRanges)
-data(cpgIslands)
-class(cpgIslands)
-## [1] "GRanges"
-## attr(,"package")
-## [1] "GenomicRanges"
-chr <- as.character(unique(seqnames(cpgIslands)))
-gen <- genome(cpgIslands)
-atrack <- AnnotationTrack(cpgIslands, name="CpG") #annotation track
-plotTracks(atrack)
-
-#create the genomic coordinate track
-gtrack <- GenomeAxisTrack()
-plotTracks(list(gtrack, atrack))
-```
 
