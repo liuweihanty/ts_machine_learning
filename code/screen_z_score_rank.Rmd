@@ -22,12 +22,8 @@ library(tibble)
 
 ##Read in files comtaining raw count of proliferation after normalizing to the interpolated ladder, and the erythrocyte differention raw data(this is a Ery marker ratio, so no interpolation normalization)
 ```{r}
-setwd("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc")
-pro.byplate <- read.csv("edited_pro_raw_interpolated_normalized.csv",stringsAsFactors = FALSE)
-ery.byplate <- read.csv("edited_ediff_raw.csv",stringsAsFactors = FALSE)
-head(ery.byplate)
-
-pro.byplate <- select(pro.byplate, -c("X","Mean.editing","Well.ID"))
+pro.byplate <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/edited_pro_raw_interpolated_normalized.csv",stringsAsFactors = FALSE)
+ery.byplate <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/edited_ediff_raw.csv",stringsAsFactors = FALSE)
 ```
 
 ##do a PCA analysis to see if there's batch effect between plates
@@ -41,7 +37,7 @@ pro.byplate.pca.df[is.na(pro.byplate.pca.df)] = 0
 
 pca_ery <- prcomp(ery.byplate.pca.df[2:9], scale. =  TRUE)
 pca_pro <- prcomp(pro.byplate.pca.df[2:(ncol(pro.byplate.pca.df)-1)],scale. = TRUE)
-autoplot(pca_ery,data = pro.byplate)
+autoplot(pca_ery)
 autoplot(pca_pro)
 ```
 
@@ -64,14 +60,13 @@ for (i in 2:ncol(pro.byplate)){
         pro.byplate[i] = pro.byplate[i] - pro.byplate[1,i]
 }
 pro.byplate <- pro.byplate %>% mutate(avg_pro <- rowMeans(pro.byplate[2:ncol(pro.byplate)],na.rm = TRUE))
-str(pro.byplate)
 pro.byplate <- rename(pro.byplate,avg.pro = "avg_pro <- rowMeans(pro.byplate[2:ncol(pro.byplate)], na.rm = TRUE)")
 ```
 
 
-combine the proliferation and erythrocyte average score into a new dataframe
+combine the proliferation and erythrocyte average score with the z scores into a new dataframe
 ```{r}
-comb_df <- read.csv("edited_both_z_avg_exp_comb.csv",stringsAsFactors = FALSE)
+comb_df <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/edited_both_z_avg_exp_comb.csv",stringsAsFactors = FALSE)
 comb_df <- comb_df %>% inner_join(pro.byplate[,c("Name","avg.pro")],by = "Name") %>%
         inner_join(ery.byplate[,c("Name","avg_exp")],by = "Name")
 
@@ -101,11 +96,64 @@ save the file
 write.csv(comb_df_norm,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv")
 ```
 
+We decided to use the average normalized expression instead of the z score method to score the genes. So now let's calculate the significance value of the experimental genes vs AAVS1 control
+
+1.In experimental design, each gene KO is performed in a separate well, so we can treat genes as independent. We can perform statistical test of each gene vs AAVS1 respectively.
+
+2.We need to perform stat test for proliferation and erythrocyte differentiation respectively, since they are different biological entities.
+
+3.Sample size is small(#of replicate), so we cannot assume their distribution is normal. Therefore we will use non-parametric Mann-Whitney U test
+
+4.We will perform the test on the normalized(gene - AAVS1) and min-max transformed data. This data is what we used for the final ranking
+```{r}
+#create a copy data for significance test
+ery.byplate.test <- ery.byplate %>%
+        select(-c("avg_exp <- rowMeans(ery.byplate[2:9], na.rm = TRUE)","avg_exp"))
+pro.byplate.test <- select(pro.byplate,-"avg.pro")
+#revert the sign of all erththrocyte differentiation reads here. We are interested in the negative erythrocyte differentiation, since they mean after KO the ery differentiation is down, they are the putative TS genes. Let's make them positive
+#vector of AAVS1 erythrocyte 
+ery.byplate.test[,2:ncol(ery.byplate.test)] <- -ery.byplate.test[,2:ncol(ery.byplate.test)]
+```
+
+Write a function to perform min max normalization
+```{r}
+
+```
 
 
+
+define a function to perform student t test for each gene comparing to AAVS1 and store the resulting p value in a new column
+```{r}
+t_test <- function(df,alpha){ 
+        rownames_df <- rownames(df)
+        df <- mutate(df,t_test_p = NA)
+        AAVS1 <- as.numeric(df[1,])
+        for (i in 1:nrow(df)) {
+            x <- t.test(AAVS1,as.numeric(df[i,]),alternative = "less")
+            df[i,"t_test_p"] <- x$p.value
+        }
+        row.names(df) <- rownames_df
+        hits <- filter(df,t_test_p < alpha)
+        return(list(df,hits))
+       
+}
+
+```
+
+```{r}
+ery.byplate.test.p <- t_test(ery.byplate.test,0.1)[[1]]
+ery.hits <- t_test(ery.byplate.test,0.1)[[2]]
+
+pro.byplate.test.p <- t_test(pro.byplate.test,0.01)[[1]]
+pro.hits <- t_test(pro.byplate.test,0.01)[[2]]
+```
+
+ 
 
 Plotting
 ```{r}
+comb_df_norm <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+
 library(ggrepel)
 #obtain the top ranked genes by both z score and 
 comb_df_norm <- rownames_to_column(comb_df_norm, var = "Gene")
@@ -126,10 +174,14 @@ comb_df_norm %>% ggplot(aes(x = Pro.z,y = E.diff.z)) +
 
 #label the top 20% gene by combined average expression
 highlight_avg_exp_comb_df <- top_frac(comb_df_norm,0.2,avg_comb)
+#select out AAVS1 for highlighting
+AAVS1_highlight <- filter(comb_df_norm,Gene == "AAVS1")
+
 comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) + 
         geom_point(alpha = 0.3) +
         geom_point(data = highlight_avg_exp_comb_df, aes(x = avg.pro,y = avg.ery), color = "red", size = 2)+
-        geom_text_repel(aes(label=ifelse(comb_df_norm$avg_comb %in% (top_frac(comb_df_norm,0.20,avg_comb)$avg_comb),as.character(Gene),''))) +
+        geom_point(data = AAVS1_highlight, aes(x = avg.pro,y = avg.ery), color = "blue", size = 2)+
+        geom_text_repel(aes(label=ifelse(comb_df_norm$avg_comb %in% (top_frac(comb_df_norm,0.20,avg_comb)$avg_comb) | comb_df_norm$Gene == "AAVS1",as.character(Gene),''))) +
         ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
         labs(x = "average proliferation", y = "average erythrocyte differentiation") +
         theme_bw() +
@@ -140,4 +192,64 @@ comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) +
 ```
 
 
-Overlapping with the machine learning classification result and CDR result
+Statistical Test on the significant genes
+
+#.Statistical test on whether jeremy's experimental gene sets bias towards proliferation
+I chose the Mann-Whitney U test
+
+##Here we are comparing two sets of data:
+1.proliferation reading of AAVS1
+2.proliferation reading of the average of all other genes
+```{r}
+#read in the proliferation data
+prol <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/edited_pro_raw_interpolated_normalized.csv",stringsAsFactors = FALSE)
+
+#proliferation reads of AAVS1 in each plate
+AAVS1 <- as.numeric(prol[1,2:ncol(prol)])
+
+#average proliferation reads of all other genes in each plate 
+all_genes <- as.numeric(colMeans(prol[2:nrow(prol),2:ncol(prol)],na.rm = TRUE))
+
+#Mann-Witney test comparing avg proliferation of AAVS1 vs all other experimental genes
+wilcox.test(AAVS1,all_genes,alternative = "less")
+
+```
+
+
+##compare
+1.proliferation reading of AAVS1
+2.proliferation reading of the average of other experimental genes that are on CDR
+```{r}
+#average proliferation reads of all CDR genes in Jeremy's experiment
+CDR <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE)
+all_genes_cdr <- prol %>% 
+        filter(Name %in% CDR$Name)
+all_genes_cdr <- colMeans(all_genes_cdr[,2:ncol(all_genes_cdr)],na.rm = TRUE) %>% 
+        as.numeric()
+
+#Mann-Witney test comparing avg proliferation of AAVS1 vs all other experimental genes that are on CDR
+wilcox.test(AAVS1,all_genes_cdr,alternative = "less")
+```
+
+
+##compare
+1.proliferation reading of AAVS1
+2.proliferation reading of the average of other experimental genes that are ML classification hits
+```{r}
+#read in the predicted TS hits from classification RF
+class_rf_hits <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE)
+
+#subset the top 120 genes as top hits and let's see which experimental genes overlap with these top hits
+all_genes_ml_overlap <- prol %>% 
+        filter(Name %in% class_rf_hits[1:110,]$Gene)
+
+#calculate the plate averages of these experimental genes overlapped with ML hits
+all_genes_ml_overlap <- colMeans(all_genes_ml_overlap[,2:ncol(all_genes_ml_overlap)],na.rm = TRUE) %>%
+        as.numeric()
+
+#perform Mann-Whitney test
+wilcox.test(AAVS1,all_genes_ml_overlap,alternative = "less")
+```
+
+
+
