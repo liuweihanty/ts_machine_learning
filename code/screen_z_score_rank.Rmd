@@ -117,13 +117,28 @@ ery.byplate.test[,2:ncol(ery.byplate.test)] <- -ery.byplate.test[,2:ncol(ery.byp
 
 Write a function to perform min max normalization
 ```{r}
+normalize <- function(df){
+        apply(df,2,function(x) (x - min(na.omit(x)))/(max(na.omit(x))-min(na.omit(x))))
+}
+```
 
+```{r}
+ery.byplate.test.norm <- as.data.frame(normalize(ery.byplate.test))
+pro.byplate.test.norm <- as.data.frame(normalize(pro.byplate.test))
+
+ery.byplate.test.norm <- rownames_to_column(ery.byplate.test.norm,var = "Gene")
+pro.byplate.test.norm <- rownames_to_column(pro.byplate.test.norm ,var = "Gene")
 ```
 
 
+Significance test to determine the genes significantly different from AAVS1
 
-define a function to perform student t test for each gene comparing to AAVS1 and store the resulting p value in a new column
+
+parametric t test
 ```{r}
+#because t test assume sample distribution, we have to perform the t test on proliferation and erythrocyte differentiation seperately
+
+#define a function to perform student t test for each gene comparing to AAVS1 and store the resulting p value in a new column
 t_test <- function(df,alpha){ 
         rownames_df <- rownames(df)
         df <- mutate(df,t_test_p = NA)
@@ -136,16 +151,39 @@ t_test <- function(df,alpha){
         hits <- filter(df,t_test_p < alpha)
         return(list(df,hits))
        
-}
-
 ```
 
-```{r}
-ery.byplate.test.p <- t_test(ery.byplate.test,0.1)[[1]]
-ery.hits <- t_test(ery.byplate.test,0.1)[[2]]
 
-pro.byplate.test.p <- t_test(pro.byplate.test,0.01)[[1]]
-pro.hits <- t_test(pro.byplate.test,0.01)[[2]]
+```{r}
+ery.byplate.test.p <- t_test(ery.byplate.test.norm,0.1)[[1]]
+ery.hits <- t_test(ery.byplate.test.norm,0.1)[[2]]
+
+pro.byplate.test.p <- t_test(pro.byplate.test.norm,0.01)[[1]]
+pro.hits <- t_test(pro.byplate.test.norm,0.01)[[2]]
+```
+
+#non-parametric Mann-Whitney test 
+```{r}
+#merge the proliferation and erythrocyte table
+pro.ery.merged <- full_join(ery.byplate.test.norm,pro.byplate.test.norm,by = "Gene")
+pro.ery.merged <- column_to_rownames(pro.ery.merged,var = "Gene")
+
+mw_test <- function(df,alpha){ 
+        rownames_df <- rownames(df)
+        df <- mutate(df,t_test_p = NA)
+        AAVS1 <- as.numeric(df[1,])
+        for (i in 1:nrow(df)) {
+            x <- wilcox.test(AAVS1,as.numeric(df[i,]),alternative = "less")
+            df[i,"t_test_p"] <- x$p.value
+        }
+        row.names(df) <- rownames_df
+        hits <- filter(df,t_test_p < alpha)
+        return(list(df,hits))
+}
+
+pro.ery.merged.p <- mw_test(pro.ery.merged,0.01)[[1]]
+#the significant genes when performing proliferation and erythrocyte score together        
+pro.ery.hits <- rownames(mw_test(pro.ery.merged,0.01)[[2]]) 
 ```
 
  
@@ -159,30 +197,33 @@ library(ggrepel)
 comb_df_norm <- rownames_to_column(comb_df_norm, var = "Gene")
 
 
-#label the top 20% gene by combined z score
-highlight_z_comb_df <- top_frac(comb_df_norm,0.20,z_comb)
-comb_df_norm %>% ggplot(aes(x = Pro.z,y = E.diff.z)) + 
-        geom_point(alpha = 0.3) +
-        geom_point(data=highlight_z_comb_df, aes(x = Pro.z,y = E.diff.z), color='red',size=2)+
-        geom_text_repel(aes(label=ifelse(comb_df_norm$z_comb %in% (top_frac(comb_df_norm,0.20,z_comb)$z_comb),as.character(Gene),''))) +
-        ggtitle("Top 20% genes ranked by combined z scores") +
-        labs(x = "proliferation z score", y = "erythrocyte differentiation z score") +
-        theme_bw() +
-        theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
-       
+# #label the top 20% gene by combined z score
+# highlight_z_comb_df <- top_frac(comb_df_norm,0.20,z_comb)
+# comb_df_norm %>% ggplot(aes(x = Pro.z,y = E.diff.z)) + 
+#         geom_point(alpha = 0.3) +
+#         geom_point(data=highlight_z_comb_df, aes(x = Pro.z,y = E.diff.z), color='red',size=2)+
+#         geom_text_repel(aes(label=ifelse(comb_df_norm$z_comb %in% (top_frac(comb_df_norm,0.20,z_comb)$z_comb),as.character(Gene),''))) +
+#         ggtitle("Top 20% genes ranked by combined z scores") +
+#         labs(x = "proliferation z score", y = "erythrocyte differentiation z score") +
+#         theme_bw() +
+#         theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+#        
 
 #label the top 20% gene by combined average expression
 highlight_avg_exp_comb_df <- top_frac(comb_df_norm,0.2,avg_comb)
+
+#label the significant genes detected by Mann-Whitney test on combined proliferation and erythrocyte differentiation score
+sig_genes_highlight <- filter(comb_df_norm,Gene %in% pro.ery.hits)
 #select out AAVS1 for highlighting
 AAVS1_highlight <- filter(comb_df_norm,Gene == "AAVS1")
 
 comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) + 
         geom_point(alpha = 0.3) +
-        geom_point(data = highlight_avg_exp_comb_df, aes(x = avg.pro,y = avg.ery), color = "red", size = 2)+
+        geom_point(data = sig_genes_highlight, aes(x = avg.pro,y = avg.ery), color = "red", size = 2)+
         geom_point(data = AAVS1_highlight, aes(x = avg.pro,y = avg.ery), color = "blue", size = 2)+
         geom_text_repel(aes(label=ifelse(comb_df_norm$avg_comb %in% (top_frac(comb_df_norm,0.20,avg_comb)$avg_comb) | comb_df_norm$Gene == "AAVS1",as.character(Gene),''))) +
-        ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
+        #ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
         labs(x = "average proliferation", y = "average erythrocyte differentiation") +
         theme_bw() +
         theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
