@@ -189,7 +189,7 @@ pro.ery.hits <- rownames(mw_test(pro.ery.merged,0.01)[[2]])
  
 
 Plotting
-```{r}
+```{r, fig.width=5,fig.height=3.5}
 comb_df_norm <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
 
 library(ggrepel)
@@ -222,7 +222,7 @@ comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) +
         geom_point(alpha = 0.3) +
         geom_point(data = sig_genes_highlight, aes(x = avg.pro,y = avg.ery), color = "red", size = 2)+
         geom_point(data = AAVS1_highlight, aes(x = avg.pro,y = avg.ery), color = "blue", size = 2)+
-        geom_text_repel(aes(label=ifelse(comb_df_norm$avg_comb %in% (top_frac(comb_df_norm,0.20,avg_comb)$avg_comb) | comb_df_norm$Gene == "AAVS1",as.character(Gene),''))) +
+        geom_text_repel(aes(label=ifelse(comb_df_norm$Gene %in% pro.ery.hits | comb_df_norm$Gene == "AAVS1",as.character(Gene),''))) +
         #ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
         labs(x = "average proliferation", y = "average erythrocyte differentiation") +
         theme_bw() +
