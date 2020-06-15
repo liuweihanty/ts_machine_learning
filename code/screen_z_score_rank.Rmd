@@ -134,7 +134,7 @@ pro.byplate.test.norm <- rownames_to_column(pro.byplate.test.norm ,var = "Gene")
 Significance test to determine the genes significantly different from AAVS1
 
 
-parametric t test
+#method 1: parametric t test
 ```{r}
 #because t test assume sample distribution, we have to perform the t test on proliferation and erythrocyte differentiation seperately
 
@@ -162,12 +162,33 @@ pro.byplate.test.p <- t_test(pro.byplate.test.norm,0.01)[[1]]
 pro.hits <- t_test(pro.byplate.test.norm,0.01)[[2]]
 ```
 
-#non-parametric Mann-Whitney test 
+#method 2 non-parametric Mann-Whitney test 
 ```{r}
 #merge the proliferation and erythrocyte table
 pro.ery.merged <- full_join(ery.byplate.test.norm,pro.byplate.test.norm,by = "Gene")
 pro.ery.merged <- column_to_rownames(pro.ery.merged,var = "Gene")
 
+#change the erythrocyte column headers
+colnames(pro.ery.merged) <- gsub("Plate","ery.plate",colnames(pro.ery.merged),ignore.case = TRUE) 
+pro.ery.merged <- rownames_to_column(pro.ery.merged,var = "Gene")
+#we have 7 erythrocyte replicated plates, in order for the proliferation replicates to have equal weights in the subsequent significance test, we need to average and make also 7 proliferation plates
+pro.ery.merged <- pro.ery.merged %>%
+        mutate(pro.plate.1 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.1.1","Interpolated.1.2","Interpolated.1.3","Interpolated.1.4")),na.rm = TRUE),
+                      pro.plate.2 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.2.1","Interpolated.2.2","Interpolated.2.3","Interpolated.2.4")),na.rm = TRUE),
+                      pro.plate.3 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.3.1","Interpolated.3.2","Interpolated.3.3","Interpolated.3.4")),na.rm = TRUE),
+                      pro.plate.4 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.4.1","Interpolated.4.2","Interpolated.4.3","Interpolated.4.4")),na.rm = TRUE),
+                      pro.plate.5 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.5.1","Interpolated.5.2","Interpolated.5.3","Interpolated.5.4")),na.rm = TRUE),
+                      pro.plate.6 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.6.1","Interpolated.6.2","Interpolated.6.3","Interpolated.6.4")),na.rm = TRUE),
+                      pro.plate.7 = rowMeans(subset(pro.ery.merged,select = c("Interpolated.7.1","Interpolated.7.2","Interpolated.7.3","Interpolated.7.4")),na.rm = TRUE))
+
+#delete the original proliferation columns
+pro.ery.merged <- pro.ery.merged %>% select(-grep("^Interpolated",colnames(pro.ery.merged),value = TRUE))
+pro.ery.merged <- column_to_rownames(pro.ery.merged,var = "Gene")
+pro.ery.merged[pro.ery.merged == "NaN"] <- NA #convert the NaN sumbol to R-recognizable NA
+```
+
+define a function to perform Mann-Whitnet test comparing each gene to AAVS1
+```{r}
 mw_test <- function(df,alpha){ 
         rownames_df <- rownames(df)
         df <- mutate(df,t_test_p = NA)
@@ -180,10 +201,15 @@ mw_test <- function(df,alpha){
         hits <- filter(df,t_test_p < alpha)
         return(list(df,hits))
 }
+```
 
-pro.ery.merged.p <- mw_test(pro.ery.merged,0.01)[[1]]
+```{r}
+pro.ery.merged.p <- mw_test(pro.ery.merged,0.05)[[1]]
 #the significant genes when performing proliferation and erythrocyte score together        
-pro.ery.hits <- rownames(mw_test(pro.ery.merged,0.01)[[2]]) 
+pro.ery.hits <- rownames(mw_test(pro.ery.merged,0.05)[[2]]) 
+
+#save the file with p values in it
+write.csv(pro.ery.merged.p,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_p_values.csv")
 ```
 
  
