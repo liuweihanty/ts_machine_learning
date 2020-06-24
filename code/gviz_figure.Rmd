@@ -391,7 +391,7 @@ check_cdr <- function(start_position, end_position, cdr_region, cdr_num) {
 
 assign_cdr <- function(df) {
   cdr_region <-data.frame(start = c(100117325, 138369119, 144345422),
-                          end = c(102025000, 140078203, 149287349))
+                          end = c(102290000, 140078203, 149287349))
   cdr = rep(0, nrow(df))
   
    for (i in 1:nrow(df)) {
@@ -410,6 +410,9 @@ assign_cdr <- function(df) {
        cdr[i] = 3
      } else {
        cdr[i] = 0
+     }
+     if (curr_row$hgnc_symbol %in% c("HEPACAM2", "SAMD9", "SAMD9L","VPS50")) {
+       cdr[i] = 4
      }
    }
   df$cdr = cdr
@@ -449,7 +452,7 @@ classrf.hits.result.w.cdr %>%
 ```{r}
 classrf.hits.result.w.cdr %>% 
   subset(cdr == 0) %>% 
-  subset(classrf.hits.result.w.cdr %>% subset(cdr == 0) %>% .$hgnc_symbol %in% cdr_list) 
+  subset(classrf.hits.result.w.cdr %>% subset(cdr == 0) %>% .$hgnc_symbol %in% cdr_list) %>% .$hgnc_symbol
 ```
 
 ```{r}
