@@ -19,7 +19,6 @@ library(dplyr)
 
 1.list of ts from classification RF
 ```{r}
-
 classrf <- read.csv("../data/summary_analysis/Chr7_TS_master.csv",stringsAsFactors = FALSE) %>%
         dplyr::select("Gene","class_rf_score") %>% filter(!is.na(class_rf_score))
 classrf.ts <- as.vector(classrf$Gene)
@@ -122,340 +121,7 @@ overlap.result = overlap.result %>% arrange(start_position)
 
 ```
 
-
-```{r Overall Plot function}
-#define a function to plot an overall result
-
-overall_plot <- function(result, title) {
-  
-  chr <- 'chr7'
-  gen <- 'hg38'
-  
-  data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                              result$end_position),
-                                 result$strand,
-                                 id=result$hgnc_symbol))
-  atrack <- AnnotationTrack(data_g, name = title)
-  
-  gtrack <- GenomeAxisTrack()
-  
-  itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-  
-  cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
-                          end = c(140078203, 102627325, 148972761))
-
-  ht <- HighlightTrack(trackList=list(atrack), 
-                       start = cdr_region$start, 
-                       end = cdr_region$end,
-                       chromosome = chr,
-                       genome = gen)
-  plotTracks(list(itrack, gtrack, ht))
-}
-
-```
-
-```{r Classfication RF overall plot}
-overall_plot(classrf.result, "Classification Random Forest TS")
-```
-
-```{r Datamining overall plot }
-overall_plot(jeremy.result, "Data Mining TS")
-```
-
-```{r CDR plot function}
-#define a function to plot result zoomed in on a specified CDR
-
-cdr_zoomin_plot <- function(result, title, cdr_num) {
-  
-  cdr <-data.frame(start = c(100117325, 138369119, 144345422),
-                 end = c(102627325, 140078203, 148972761))
-  
-  cdr_start <- cdr$start[cdr_num]
-  cdr_end <- cdr$end[cdr_num]
-  
-  result <- result %>% filter((start_position >= cdr_start & end_position <= cdr_end) |
-                            (start_position <= cdr_start & end_position >= cdr_start) |
-                            (start_position <= cdr_end & end_position >= cdr_end) |
-                            (start_position <= cdr_start & end_position >= cdr_end))
-  
-  if (nrow(result) == 0) {
-    statement = paste("No TS Genes in", title)
-    return (statement)
-  }
-  
-  chr <- 'chr7'
-  gen <- 'hg38'
-  
-  data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                              result$end_position),
-                                 result$strand,
-                                 group = result$hgnc_symbol,
-                                 id=result$hgnc_symbol))
-  atrack <- AnnotationTrack(data_g, name = title, 
-                            groupAnnotation="group", fontcolor.group="darkblue", 
-                            shape = "box", just.group = "left")
-  
-  gtrack <- GenomeAxisTrack()
-  
-  itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-  
-  if ((sum(result$start_position < cdr_start) + sum(result$end_position > cdr_end)) > 0) {
-    ht <- HighlightTrack(trackList=list(atrack), 
-                         start = cdr_start, 
-                         end = cdr_end,
-                         chromosome = chr,
-                         genome = gen)
-    plotTracks(list(itrack, gtrack, ht))
-  } else {
-      plotTracks(list(itrack, gtrack, atrack), from = cdr_start - 3e5, to = cdr_end)
-  }
-    
-}
-```
-
-
-```{r regrf rank plot overall} 
-
-chr <- 'chr7'
-gen <- 'hg38'
-result <- regrf.result
-regrf.result.rank <- data.frame(result, rank = 110 - regrf[order(regrf$Gene),]$rank)
-  
-data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                              result$end_position),
-                               result$strand,
-                               group=result$hgnc_symbol,
-                               id=result$hgnc_symbol))
-atrack <- AnnotationTrack(data_g, name = "Regression RF Overall")
-                            
-gtrack <- GenomeAxisTrack()
-  
-itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-
-rank_data <- regrf.result.rank
-rank_data <- rank_data[order(rank_data$start_position),]
-
-rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
-                                                    rank_data$end_position),
-                                       strand = "*",
-                                       rank=rank_data$rank))
-                        
-dTrack <- DataTrack(rank_data_d, name="Score")
-
-cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
-                        end = c(140078203, 102627325, 148972761))
-
-
-ht <- HighlightTrack(trackList=list(atrack, dTrack), 
-                       start = cdr_region$start, 
-                       end = cdr_region$end,
-                       chromosome = chr,
-                       genome = gen)
-plotTracks(list(itrack, gtrack, ht), type = "b")
-
-```
-
-
-```{r CDR plot with rank function}
-#define a function to plot result zoomed in on a specified CDR
-
-cdr_zoomin_plot_w_rank <- function(result, title, cdr_num) {
-  
-  cdr <-data.frame(start = c(100117325, 138369119, 144345422),
-                   end = c(102627325, 140078203, 148972761))
-  
-  cdr_start <- cdr$start[cdr_num]
-  cdr_end <- cdr$end[cdr_num]
-  
-  result <- result %>% filter((start_position >= cdr_start & end_position <= cdr_end) |
-                              (start_position <= cdr_start & end_position >= cdr_start) |
-                              (start_position <= cdr_end & end_position >= cdr_end) |
-                              (start_position <= cdr_start & end_position >= cdr_end))
-  
-  if (nrow(result) == 0) {
-    statement = paste("No TS Genes in", title)
-    return (statement)
-  }
-  
-  chr <- 'chr7'
-  gen <- 'hg38'
-  
-  data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                              result$end_position),
-                                 result$strand,
-                                 group = result$hgnc_symbol,
-                                 id=result$hgnc_symbol))
-  atrack <- AnnotationTrack(data_g, name = title, 
-                            groupAnnotation="group", fontcolor.group="darkblue", 
-                            shape = "box", just.group = "left")
-  
-  gtrack <- GenomeAxisTrack()
-  
-  itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-  
-  rank_data <- result
-  rank_data <- rank_data[order(rank_data$start_position),]
-
-  rank_data_d <- with(rank_data, GRanges(chr, IRanges(rank_data$start_position,
-                                                      rank_data$end_position),
-                                         strand = "*",
-                                         rank=rank_data$rank))
-  
-  dtrack <- DataTrack(rank_data_d, name="Score")
-  
-  if ((sum(result$start_position < cdr_start) + sum(result$end_position > cdr_end)) > 0) {
-    ht <- HighlightTrack(trackList=list(atrack, dtrack), 
-                         start = cdr_start, 
-                         end = cdr_end,
-                         chromosome = chr,
-                         genome = gen)
-    plotTracks(list(itrack, gtrack, ht), type = "b")
-  } else {
-    plotTracks(list(itrack, gtrack, atrack, dtrack), from = cdr_start - 3e5, to = cdr_end, type = "b")
-  }
-}
-    
-```
-
-
-```{r overlay function}
-#define a function that takes 2 list and 1 overlayed list with unique entries and return an array with 1s and 2s
-
-overlay_count <- function(overlay_list, list1, list2) {
-  result <- c()
-  
-  #if an item in the overlayed list is in both list, then the entry will be 
-  for (item in overlay_list) {
-    if ((item %in% list1) & (item %in% list2)) {
-      result <- append(result, 2)
-    } else {
-      result <- append(result, 1)
-    }
-  }
-  return(result)
-}
-
-classandjeremy.ts <- unique(as.vector(c(classrf.ts, jeremy.result$hgnc_symbol)))
-classandjeremy.count <- overlay_count(classandjeremy.ts, classrf.ts, jeremy.result$hgnc_symbol)
-
-regandjeremy.ts <- unique(as.vector(c(regrf.ts, jeremy.result$hgnc_symbol)))
-regandjeremy.count <- overlay_count(regandjeremy.ts, regrf.ts, jeremy.result$hgnc_symbol)
-```
-
-
-```{r Classification RF and Data mining overlayed graph}
-
-chr <- 'chr7'
-gen <- 'hg38'
-result <- data.frame(classandjeremy.result, count = classandjeremy.count)
-result <- result[order(result$start_position), ]
-
-data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                            result$end_position),
-                               result$strand,
-                               group=result$hgnc_symbol,
-                               id=result$hgnc_symbol))
-atrack <- AnnotationTrack(data_g, name = "Classification RF and Data Mining overlayed")
-                            
-gtrack <- GenomeAxisTrack()
-  
-itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-
-data <- with(result, GRanges(chr, IRanges(result$start_position,
-                                          result$end_position),
-                                       strand = "*",
-                                       count=result$count))
-                        
-dTrack <- DataTrack(data, name="Count")
-
-cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
-                        end = c(140078203, 102627325, 148972761))
-
-
-ht <- HighlightTrack(trackList=list(atrack, dTrack), 
-                       start = cdr_region$start, 
-                       end = cdr_region$end,
-                       chromosome = chr,
-                       genome = gen)
-plotTracks(list(itrack, gtrack, ht), type = "b")
-```
-
-
-```{r TS Genes in Both Classification and Data mining}
-
-chr <- 'chr7'
-gen <- 'hg38'
-result <- data.frame(classandjeremy.result, count = classandjeremy.count)
-result <- result %>% filter(count == 2)
-
-data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                            result$end_position),
-                               result$strand,
-                               group=result$hgnc_symbol,
-                               id=result$hgnc_symbol))
-atrack <- AnnotationTrack(data_g, name = "TS Genes in Both Classification RF and Data Mining",
-                          groupAnnotation="group", fontcolor.group="darkblue", 
-                          shape = "box", just.group = "left")
-                            
-gtrack <- GenomeAxisTrack()
-  
-itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-
-cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
-                        end = c(140078203, 102627325, 148972761))
-
-
-ht <- HighlightTrack(trackList=list(atrack), 
-                       start = cdr_region$start, 
-                       end = cdr_region$end,
-                       chromosome = chr,
-                       genome = gen)
-plotTracks(list(itrack, gtrack, ht), )
-
-```
-
-
-```{r}
-chr <- 'chr7'
-gen <- 'hg38'
-result <- regrf.complete.result
-result <- data.frame(result, pred_prob = regrf.complete$pred_prob)
-result <- result[order(result$start_position), ]
-  
-data_g <- with(result, GRanges(chr, IRanges(result$start_position,
-                                              result$end_position),
-                               result$strand,
-                               group=result$hgnc_symbol,
-                               id=result$hgnc_symbol))
-atrack <- AnnotationTrack(data_g, name = "Regression RF All Chr7 Genes")
-                            
-gtrack <- GenomeAxisTrack()
-  
-itrack <- IdeogramTrack(genome = gen, chromosome = chr)
-
-data <- with(rank_data, GRanges(chr, IRanges(result$start_position,
-                                             result$end_position),
-                                strand = "*",
-                                pred_prob=result$pred_prob))
-                        
-dTrack <- DataTrack(data, name="Predicted Probability", type = "l")
-#dTrack_s <- DataTrack(data, name="Predicted Probability", type = "l")
-
-cdr_region <-data.frame(start = c(138369119, 100117325, 144345422),
-                        end = c(140078203, 102627325, 148972761))
-
-
-ht <- HighlightTrack(trackList=list(dTrack), 
-                       start = cdr_region$start, 
-                       end = cdr_region$end,
-                       chromosome = chr,
-                       genome = gen)
-plotTracks(list(itrack, gtrack, ht))
-
-```
-
-
-```{r}
+```{r gene_density function}
 gene_density <- function(bin_size, genedf) {
   
   # This function takes 
@@ -502,57 +168,8 @@ gene_density <- function(bin_size, genedf) {
 }
 ```
 
-```{r}
-gene_density_doodle <- function(bin_size, genedf) {
-  
-  chr7_length <- 159345973
-  bin_size.b <- bin_size * 1e6
-  
-  #calculate num of bins, n
-  bin_num = ceiling(chr7_length / bin_size.b)
-  
-  #for Bin 1 to n-1, it is of size given, the last bin is smaller than size given
-  start_array <- 0:(bin_num - 1) * bin_size.b + 1
-  end_array <- c(1:(bin_num - 1) * bin_size.b, chr7_length)
-  
-  gene_num_start = rep(0, bin_num)
-  gene_num_overlap = rep(0, bin_num)
-  gene_num_mid = rep(0, bin_num)
-  
-  genedf = genedf %>% mutate(mid_position = start_position + floor(end_position - start_position)/2, 
-                             start_bin = floor(start_position/bin_size.b),
-                             end_bin = floor(end_position/bin_size.b),
-                             mid_bin = floor(mid_position/bin_size.b),
-                             bin_overlap = (start_bin != end_bin)
-                             )
-  
-  for (i in 1:nrow(genedf)) {
-    curr_row = genedf[i, ]
-    gene_num_start[curr_row$start_bin] = gene_num_start[curr_row$start_bin] + 1
-    gene_num_mid[curr_row$mid_bin] = gene_num_mid[curr_row$mid_bin] + 1
-    gene_num_overlap[curr_row$start_bin] = gene_num_overlap[curr_row$start_bin] + 1
-    if (curr_row$bin_overlap) {
-      counter = curr_row$start_bin
-      while (counter < curr_row$end_bin) {
-        counter = counter + 1
-        gene_num_overlap[curr_row$counter] = gene_num_overlap[curr_row$counter] + 1
-      }
-    }
-  }
-  start_density = c(gene_num_start[1:(bin_num - 1)] / bin_size, gene_num_start[bin_num] * 1e6 /(end_array[bin_num] - end_array[bin_num - 1]))
-  mid_density = c(gene_num_mid[1:(bin_num - 1)] / bin_size, gene_num_mid[bin_num] * 1e6 /(end_array[bin_num] - end_array[bin_num - 1]))
-  overlap_density = c(gene_num_overlap[1:(bin_num - 1)] / bin_size, gene_num_overlap[bin_num] * 1e6 /(end_array[bin_num] - end_array[bin_num - 1]))
-  result = data.frame(start = start_array, end = end_array, start_density = start_density, mid_density = mid_density, overlap_density = overlap_density)
-  return(result)
-
-}
-```
 
 
-```{r}
-result_doodle = gene_density_doodle(1, classrf.hits.result %>% select(hgnc_symbol, start_position, end_position))
-result_doodle
-```
 
 ```{r}
 score_normalization <- function(df, colname, gene_num, bin_size) {
@@ -673,7 +290,7 @@ plotTracks(list(itrack, gtrack, dTrack.density, ht1))
 ```
 
 
-```{r, fig.width= 18, fig.height = 15}
+```{r Original Graph, fig.width= 8, fig.height = 6}
 chr <- 'chr7'
 gen <- 'hg38'
 #our two result dataframes are:
@@ -754,4 +371,103 @@ plotTracks(list(itrack, gtrack, dTrack.density, ht1))
 ```
 
 
+```{r assign CDR to each gene}
+check_cdr <- function(start_position, end_position, cdr_region, cdr_num) {
+  cdr_start = cdr_region[cdr_num, 'start']
+  cdr_end = cdr_region[cdr_num, 'end']
+  if (start_position >= cdr_start & end_position <= cdr_end) {
+    return (TRUE)
+  } else if ((start_position <= cdr_start & end_position >= cdr_start)) {
+    return (TRUE)
+  } else if ((start_position <= cdr_end & end_position >= cdr_end)) {
+    return (TRUE)
+  } else if ((start_position <= cdr_start & end_position >= cdr_end)) {
+    return (TRUE)
+  } else {
+    return (FALSE)
+      }
+  
+}
+
+assign_cdr <- function(df) {
+  cdr_region <-data.frame(start = c(100117325, 138369119, 144345422),
+                          end = c(102025000, 140078203, 149287349))
+  cdr = rep(0, nrow(df))
+  
+   for (i in 1:nrow(df)) {
+     curr_row = df[i, ]
+     curr_start = curr_row$start_position
+     curr_end = curr_row$end_position
+     if (curr_end < cdr_region[1, 'start'] | curr_start > cdr_region[3, 'end']) {
+       cdr[i] = 0
+       #print(0)
+     } else if (check_cdr(curr_start, curr_end, cdr_region, 1)) {
+       cdr[i] = 1
+     } else if (check_cdr(curr_start, curr_end, cdr_region, 2)) {
+       cdr[i] = 2
+       print
+     } else if (check_cdr(curr_start, curr_end, cdr_region, 3)) {
+       cdr[i] = 3
+     } else {
+       cdr[i] = 0
+     }
+   }
+  df$cdr = cdr
+  return(df)
+}
+```
+
+```{r}
+classrf.hits.result.w.cdr = assign_cdr(classrf.hits.result)
+```
+
+```{r}
+classrf.hits.result.w.cdr %>% subset(cdr != 0) %>% .$hgnc_symbol
+```
+
+
+```{r}
+cdr_list = read.csv("../data/CDR_list.csv") %>% .$Name
+my_cdr = classrf.hits.result.w.cdr %>% subset(cdr != 0) %>% select(hgnc_symbol)
+my_list = my_cdr$hgnc_symbol
+write.csv(my_cdr,"../data/CDR_list_updated.csv", row.names = FALSE)
+```
+
+```{r}
+my_list %in% cdr_list
+```
+
+
+```{r}
+classrf.hits.result.w.cdr %>% 
+  subset(cdr != 0) %>% 
+  subset(!(my_list %in% cdr_list)) %>% 
+  subset(cdr == 3) %>% .$hgnc_symbol
+```
+
+
+```{r}
+classrf.hits.result.w.cdr %>% 
+  subset(cdr == 0) %>% 
+  subset(classrf.hits.result.w.cdr %>% subset(cdr == 0) %>% .$hgnc_symbol %in% cdr_list) 
+```
+
+```{r}
+classrf.hits.result.w.cdr %>% group_by(cdr) %>% count()
+```
+
+```{r}
+getBM(
+    mart = mart.hs,
+    attributes = c(
+      "hgnc_symbol",
+      "chromosome_name",
+      "start_position",
+      "end_position",
+      "strand"
+      ),
+    filter = "hgnc_symbol",
+    values = "HEPACAM2",
+    uniqueRows=TRUE)
+```
 
