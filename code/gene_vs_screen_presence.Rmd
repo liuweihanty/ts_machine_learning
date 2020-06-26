@@ -64,3 +64,111 @@ pheatmap(as.matrix(gene_vs_screen[1:13]),
 ```
 
 
+
+Grand Heatmap:
+
+1).continuous variables:
+Proliferation score, 
+Erythroid differentiation impairment score
+Combined experimental score
+z scores on all CRISPR screens we used
+Machine Learning score
+
+2.).categorical variables
+Cancer Gene Census TS status
+CDR status
+
+read in all the predictor columns
+```{r}
+rf_predictors <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn_CGC.csv",stringsAsFactors = FALSE)
+#only retain the crispr score and gene name columns
+rf_predictors <- select(rf_predictors,-c("chromosome","TS_status"))
+```
+
+Read in
+
+classification machine learning score
+```{r}
+rf_class_result <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE)
+rf_class_result <-  dplyr::select(rf_class_result,-"X") 
+
+```
+
+
+Proliferation score, 
+Erythroid differentiation impairment score
+Combined experimental score
+```{r}
+exp_score <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+exp_score <- select(exp_score,c("Gene","avg.pro","avg.ery","avg_comb"))
+str(exp_score)
+```
+
+CGC status
+```{r}
+CGC_status <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
+CGC_status <- select(CGC_status,"Gene.Symbol") %>% 
+        rename(Gene = Gene.Symbol) %>% mutate(CGC_TS = 1)
+```
+
+CDR status
+```{r}
+CDR_status <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE,header = FALSE)
+names(CDR_status) <- "Gene"
+CDR_status <- mutate(CDR_status,CDR_status = 1)
+```
+Combine everything together, note we will only plot the genes used in experiment
+```{r}
+grand_sheet <- left_join(exp_score,rf_predictors,by = "Gene") %>% 
+        left_join(rf_class_result, by = "Gene") %>%
+        left_join(CGC_status, by = "Gene") %>%
+        left_join(CDR_status, by = "Gene")
+#convert the NAs in CGC status and CDR status to 0
+grand_sheet$CGC_TS[is.na(grand_sheet$CGC_TS)] <- 0
+grand_sheet$CDR_status[is.na(grand_sheet$CDR_status)] <- 0
+
+#relocate columns to leave all the crispr screen data to the ;later half
+grand_sheet <- grand_sheet %>% 
+        relocate(TS_freq,.after = Gene) %>% relocate(c("CGC_TS","CDR_status"),.before = TS_freq)
+str(grand_sheet)
+```
+
+Impute missing values
+```{r}
+# test which column has missing values
+apply(grand_sheet,2,is.na) %>% apply(2,sum)
+
+#change all the missing values in TS_freq to 100, which means not tumor suppressor
+grand_sheet$TS_freq[is.na(grand_sheet$TS_freq)] <- 100
+
+#change all the missing values in the crispr screen columns to 0
+grand_sheet[is.na(grand_sheet)] <- 0
+
+#make a duplivate copy for calculating z scores
+grand_sheet_z <- grand_sheet
+```
+
+Calculate z scores
+```{r}
+z_score <- function(x){
+        (x - mean(x))/sd(x)
+}
+grand_sheet_z[4:ncol(grand_sheet_z)] <- apply(grand_sheet_z[4:ncol(grand_sheet_z)],2,z_score)
+str(grand_sheet_z)
+```
+
+Plot heatmap
+```{r,fig.width=7,fig.height=7}
+library(heatmap3)
+#subset out the continuous columns of the grand sheet
+grand_sheet_z_cont <- select(grand_sheet_z,-c("CGC_TS","CDR_status")) %>%
+        column_to_rownames(var = "Gene")
+
+grand_sheet_z_cont <- grand_sheet_z_cont[order(grand_sheet_z_cont$avg_comb),]
+heatmap3(as.matrix(grand_sheet_z_cont),Colv = NA,Rowv = NA,margin=c(7,7),
+        balanceColor = TRUE,
+        cexRow = 0.4
+)
+
+```
+
