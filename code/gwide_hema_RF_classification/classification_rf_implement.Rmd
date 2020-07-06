@@ -322,7 +322,10 @@ hyper_parameter_tune <- function(train_data,mtry,nodesize,sampsize){
         }
        return(best_hyper_all)        
 }  
+```
 
+```{r}
+set.seed(57895758)
 best_hyper_all <- hyper_parameter_tune(balanced_train_list,mtry,nodesize,sampsize) 
  
 ```
