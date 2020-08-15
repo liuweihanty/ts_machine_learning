@@ -6,7 +6,7 @@ output: pdf_document
         toc = TRUE
 ---
 1.Combine the by-plate proliferation and Erythrocyte differentiation z scores into a unified Z score
-2.
+
 
 ```{r,results='hide'}
 library(ggplot2)
@@ -48,7 +48,7 @@ In this case, AAVS1 will have a value of 0
 for (i in 2:ncol(ery.byplate)){
         ery.byplate[i] = ery.byplate[i] - ery.byplate[1,i]
 }
-ery.byplate <- ery.byplate %>% mutate(avg_exp <- rowMeans(ery.byplate[2:9],na.rm = TRUE))
+ery.byplate <- ery.byplate %>% dplyr::mutate(avg_exp = rowMeans(ery.byplate[2:9],na.rm = TRUE))
 #revert the sign of the average erythrocyte score for combining later. The negative ery scores here means the erythrocyte differentiation is down after KO the gene, so these are putative myeloid TS. We want to revert their score to positive, just to be easier to combine with the proliferation score later.
 ery.byplate$avg_exp <- -ery.byplate$avg_exp
 ```
@@ -66,10 +66,7 @@ pro.byplate <- rename(pro.byplate,avg.pro = "avg_pro <- rowMeans(pro.byplate[2:n
 
 combine the proliferation and erythrocyte average score with the z scores into a new dataframe
 ```{r}
-comb_df <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/edited_both_z_avg_exp_comb.csv",stringsAsFactors = FALSE)
-comb_df <- comb_df %>% inner_join(pro.byplate[,c("Name","avg.pro")],by = "Name") %>%
-        inner_join(ery.byplate[,c("Name","avg_exp")],by = "Name")
-
+comb_df <- inner_join(pro.byplate[,c("Name","avg.pro")],ery.byplate[,c("Name","avg_exp")],by = "Name")
 
 rownames(comb_df) <- comb_df[,1]
 comb_df <- select(comb_df,-"Name")
@@ -80,15 +77,10 @@ normalize <- function(df){
         
 comb_df_norm <- as.data.frame(normalize(comb_df))
 
-#create combined z score and avg score columns
-comb_df_norm$z_comb <- comb_df_norm$Pro.z+comb_df_norm$E.diff.z
-#comb_df_norm$avg_comb <- comb_df_norm$
-comb_df_norm$avg_comb <- comb_df_norm$avg.pro + comb_df_norm$avg.ery
-
-View(comb_df)
-View(comb_df_norm)
-
-str(comb_df_norm)
+#create combined avg score columns
+comb_df_norm$avg_comb <- comb_df_norm$avg.pro + comb_df_norm$avg_exp
+#rename the erythrocyte column
+comb_df_norm <- rename(comb_df_norm ,avg.ery = avg_exp)
 ```
 
 save the file
@@ -108,11 +100,15 @@ We decided to use the average normalized expression instead of the z score metho
 ```{r}
 #create a copy data for significance test
 ery.byplate.test <- ery.byplate %>%
-        select(-c("avg_exp <- rowMeans(ery.byplate[2:9], na.rm = TRUE)","avg_exp"))
+        select(-"avg_exp")
 pro.byplate.test <- select(pro.byplate,-"avg.pro")
 #revert the sign of all erththrocyte differentiation reads here. We are interested in the negative erythrocyte differentiation, since they mean after KO the ery differentiation is down, they are the putative TS genes. Let's make them positive
 #vector of AAVS1 erythrocyte 
 ery.byplate.test[,2:ncol(ery.byplate.test)] <- -ery.byplate.test[,2:ncol(ery.byplate.test)]
+
+#covert the gene name column to rownames
+ery.byplate.test <- column_to_rownames(ery.byplate.test,var = "Name")
+pro.byplate.test <- column_to_rownames(pro.byplate.test,var = "Name")
 ```
 
 Write a function to perform min max normalization
@@ -133,36 +129,7 @@ pro.byplate.test.norm <- rownames_to_column(pro.byplate.test.norm ,var = "Gene")
 
 Significance test to determine the genes significantly different from AAVS1
 
-
-#method 1: parametric t test
-```{r}
-#because t test assume sample distribution, we have to perform the t test on proliferation and erythrocyte differentiation seperately
-
-#define a function to perform student t test for each gene comparing to AAVS1 and store the resulting p value in a new column
-t_test <- function(df,alpha){ 
-        rownames_df <- rownames(df)
-        df <- mutate(df,t_test_p = NA)
-        AAVS1 <- as.numeric(df[1,])
-        for (i in 1:nrow(df)) {
-            x <- t.test(AAVS1,as.numeric(df[i,]),alternative = "less")
-            df[i,"t_test_p"] <- x$p.value
-        }
-        row.names(df) <- rownames_df
-        hits <- filter(df,t_test_p < alpha)
-        return(list(df,hits))
-       
-```
-
-
-```{r}
-ery.byplate.test.p <- t_test(ery.byplate.test.norm,0.1)[[1]]
-ery.hits <- t_test(ery.byplate.test.norm,0.1)[[2]]
-
-pro.byplate.test.p <- t_test(pro.byplate.test.norm,0.01)[[1]]
-pro.hits <- t_test(pro.byplate.test.norm,0.01)[[2]]
-```
-
-#method 2 non-parametric Mann-Whitney test 
+non-parametric Mann-Whitney test 
 ```{r}
 #merge the proliferation and erythrocyte table
 pro.ery.merged <- full_join(ery.byplate.test.norm,pro.byplate.test.norm,by = "Gene")
@@ -222,23 +189,6 @@ library(ggrepel)
 #obtain the top ranked genes by both z score and 
 comb_df_norm <- rownames_to_column(comb_df_norm, var = "Gene")
 
-
-# #label the top 20% gene by combined z score
-# highlight_z_comb_df <- top_frac(comb_df_norm,0.20,z_comb)
-# comb_df_norm %>% ggplot(aes(x = Pro.z,y = E.diff.z)) + 
-#         geom_point(alpha = 0.3) +
-#         geom_point(data=highlight_z_comb_df, aes(x = Pro.z,y = E.diff.z), color='red',size=2)+
-#         geom_text_repel(aes(label=ifelse(comb_df_norm$z_comb %in% (top_frac(comb_df_norm,0.20,z_comb)$z_comb),as.character(Gene),''))) +
-#         ggtitle("Top 20% genes ranked by combined z scores") +
-#         labs(x = "proliferation z score", y = "erythrocyte differentiation z score") +
-#         theme_bw() +
-#         theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
-#         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
-#        
-
-#label the top 20% gene by combined average expression
-highlight_avg_exp_comb_df <- top_frac(comb_df_norm,0.2,avg_comb)
-
 #label the significant genes detected by Mann-Whitney test on combined proliferation and erythrocyte differentiation score
 sig_genes_highlight <- filter(comb_df_norm,Gene %in% pro.ery.hits)
 #select out AAVS1 for highlighting
@@ -250,12 +200,17 @@ comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) +
         geom_point(data = AAVS1_highlight, aes(x = avg.pro,y = avg.ery), color = "blue", size = 2)+
         geom_text_repel(aes(label=ifelse(comb_df_norm$Gene %in% pro.ery.hits | comb_df_norm$Gene == "AAVS1",as.character(Gene),''))) +
         #ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
-        labs(x = "average proliferation", y = "average erythrocyte differentiation") +
+        labs(x = "normalized proliferation", y = "normalized erythrocyte differentiation") +
         theme_bw() +
-        theme(plot.title = element_text(hjust = 0.5),panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+        theme(plot.title = element_text(hjust = 0.5),
+              axis.text = element_text(size = 12,face = 'bold'),
+              axis.title = element_text(size = 15,face = "bold"),
+              panel.border = element_blank(), 
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              axis.line = element_line(colour = "black")) 
         
-
+ggsave("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/pro_ery_score.jpg",dpi = 600,height=7, width=7, units="in")
 ```
 
 

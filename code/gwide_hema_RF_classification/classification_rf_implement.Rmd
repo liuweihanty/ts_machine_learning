@@ -19,188 +19,18 @@ library(stats) #data manipulation
 ##Read in files
 ```{r}
 
-gwide_knn <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn.csv") 
+gwide_knn <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn.csv",stringsAsFactors = FALSE) 
 str(gwide_knn)
 ```
 
 some data cleaning
 ```{r}
 set.seed(1278353)
-#move the gene column to row names
-gwide_knn <- gwide_knn %>% column_to_rownames(var = "Gene")
-gwide_knn <- select(gwide_knn, -"X")
+#label the gene names to be rowname of the df
+rownames(gwide_knn) <- make.names(gwide_knn$Gene,unique = TRUE)
+gwide_knn <- select(gwide_knn, -c("X","Gene"))
 head(gwide_knn)
 ```
-
-
-Content below are for non-bootstrapped version, We decided to use bootstrapping, so skip this section plz
------------------------------------------------------------------------------------------
-
-split for testing and training data, training data are every gene not on chr 7, tetsing data are everything on chr7
-```{r}
-#split for testing and training data, training data are every gene not on chr 7, tetsing data are everything on chr7
-table(gwide_knn$chromosome)
-
-#create training data (unbalanced)
-gwide_train <- gwide_knn %>%
-        filter(chromosome != 7 & chromosome != "MT")
-
-table(gwide_train$chromosome)
-```
-
-there are 17484 non-TS and 943 TS, which caused the problem of classification imbalance. The majority 0s will dominate the training process, thus, we need to make a more balanced training set in terms of the TS label. from the gwide_train table, I extracted all the TSs(~1000 genes) and from the non-TSs, I randomly sampled ~ 1000 genes, and combined these two sets of genes.
-```{r}
-#create a balanced training set by taking all TSGene == 1(tumor suppressors), and sample randomly from each chromosome by fraction = 0.06. In this way, in the final training set we will have roughly equal amount of TS and non-TS
-gwide_train_balance <- filter(gwide_train,TS_status == 0) %>% 
-        grouped_df("chromosome") %>%
-        sample_frac(size = 0.06)
-
-gwide_train_balance <- as.data.frame(gwide_train_balance)
-gwide_train_balance <- rbind(gwide_train_balance,filter(gwide_train,TS_status == 1))
-str(gwide_train_balance)
-
-gwide_train_balance$TS_status <- as.factor(gwide_train_balance$TS_status)
-
-#creating testing set, which will be all genes on chromosome 7
-gwide_test <- gwide_knn %>%
-        filter(chromosome == 7)
-gwide_test$TS_status <- as.factor(gwide_test$TS_status)
-glimpse(gwide_test)
-
-table(gwide_train_balance$TS_status)
-```
-
-
-##Hyperparameter tuning
-```{r}
-#' @ntree: number of trees, default is 500
-#' @mtry: number of variables randomly sampled as candidates at each split
-#' @samplesize: number of samples(rows) to train on, default = 63.2%
-#' @nodesize: minimum size(# of samples) pf the terminal nodes, if small, allows deeper and more complex tree
-#' @maxnodes: maximum number of terminal nodes
-
-#grid search
-# Establish a list of possible values for mtry, nodesize and sampsize
-mtry <- seq(4, ncol(gwide_train_balance) * 0.8, 2)
-nodesize <- seq(3, 10, 2)
-sampsize <- nrow(gwide_train_balance) * c(0.7,0.8)
-
-# Create a data frame containing all combinations 
-hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
-
-# Create an empty vector to store OOB error values
-oob_err <- c()
-
-# Write a loop over the rows of hyper_grid to train the grid of models
-for (i in 1:nrow(hyper_grid)) {
-
-    # Train a Random Forest model
-    rf_model <- randomForest(formula = TS_status ~ ., 
-                          data = select(gwide_train_balance,-c("chromosome")),
-                          mtry = hyper_grid$mtry[i],
-                          nodesize = hyper_grid$nodesize[i],
-                          sampsize = hyper_grid$sampsize[i])
-                          
-    # Store OOB error for the model                      
-    oob_err[i] <- rf_model$err.rate[nrow(rf_model$err.rate), "OOB"]
-}
-
-# Identify optimal set of hyperparmeters based on OOB error
-opt_i <- which.min(oob_err)
-print(hyper_grid[opt_i,])
-```
-
-
-
-## fit of random forest model using the optimal hyperparameters
-```{r, fig.height=4, fig.width=8}
-set.seed(22)
-#taking the 
-rf = randomForest(TS_status ~ .,  
-                   data = select(gwide_train_balance,-c("chromosome")),importance = TRUE,mtry = 4,nodesize = 9,sampsize = 0.8*nrow(gwide_train_balance))
-plot(rf) 
-print(rf)
-varImpPlot(rf)
-
-```
-
-
-##Predict the test set
-```{r}
-# Generate predicted classes using the model object
-gwide_test$class_prediction <- predict(object = rf,   # model object 
-                            newdata = gwide_test,  # test dataset
-                            type = "class") 
-
-#extract the predicted TS genes in the test set
-pred_gene <- filter(gwide_test, class_prediction == 1)["Gene"]
-
-#read in the TSGene data
-tsgene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/TSGene_all.csv",stringsAsFactors = FALSE)
-#overlapping between TSGene TS and the overlapping gene between 96 TS + predicted ts(our targets)
-high_conf_hits <- as.data.frame(pred_gene$Gene[pred_gene$Gene %in% tsgene$GeneSymbol])
-
-write.csv(high_conf_hits,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/high_conf_hits_TSGene.csv")
-```
-
-Check the overlap between Jeremy's datamining 96 TS with the canonical TS
-```{r}
-jeremy_ts <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/96ts_work_data.csv")
-jeremy_genes <- jeremy_ts["Gene"]
-jeremy_genes$Gene <- as.character(jeremy_genes$Gene)
-
-
-#overlap between Jelemy's datamining 96 TS and the TSGene database canonical TS
-hits <- c()
-for (i in 1:length(jeremy_genes$Gene)) {
-        if (jeremy_genes$Gene[i] %in% as.character(pred_gene$Gene)){
-                hits <- c(hits,jeremy_genes$Gene[i])
-        }
-      
-}
-hits #list of Jeremy dataminning 96 TS that overlap with the RF predicted genes
-
-#overlapping between TSGene TS and the overlapping gene between 96 TS + predicted ts(our targets)
-pred_gene$Gene[pred_gene$Gene %in% canonical_ts_chr7$Gene]
-
-```
-
-Our hit genes: overlap between predicted chr7 TS and Jeremy's screen genes
- [1] "HNRNPA2B1" "IKZF1"     "YWHAG"     "EIF2AK1"   "KMT2C"     "MCM7"      "KMT2E"     "PTPN12"    "TNRC18"    "AHR"      
-[11] "GRB10"     "LUC7L2"    "CASP2"     "CUX1"      "LIMK1"     "IGF2BP3"   "EZH2"      "PLOD3"     "IRF5"      "AGK"      
-[21] "JAZF1"     "BCAP29"    "SP4"       "ZNF12"     "ASL"       "PHF14"     "TMEM120A"  "ZNF800"    "PAXIP1"    "ATXN7L1"  
-[31] "GNAI1"     "ZSCAN25"   "ZNF467"    "NRF1"      "KCTD7"     "HOXA10"    "CLDN15"    "BRAF"      "ZC3HAV1L"  "ZNF789"   
-[41] "PUS7"      "BPGM"      "PTCD1"     "WASL"      "VKORC1L1"  "STX1A"     "AP4M1"     "SEMA3C"    "SMO"       "GTF2IRD1"
-
-The overlap of above with TSGene labeled TS:
- "IKZF1"  "KMT2C"  "PTPN12" "AHR"    "CASP2"  "CUX1"   "EZH2"   "IRF5"   "NRF1" 
-
-##Evaluate the model performance on test set
-```{r}
-
-# Calculate the confusion matrix for the test set
-cm <- confusionMatrix(data = as.factor(class_prediction),       # predicted classes
-                      reference = gwide_test$TS_status)  # actual classes
-
-print(cm)
-
-
-#AUC of test set
-library(pROC)
-# Generate predictions on the test set
-pred <- predict(object = rf,
-            newdata = gwide_test,
-            type = "prob")
-
-
-# Compute the AUC (`actual` must be a binary 1/0 numeric vector)
-auc(actual = ifelse(gwide_test$TS_status == 1, 1, 0), 
-    predicted = pred[,1])     
-```
-
-
-
------------------------------------------------------------------------------------------------
 
 
 Use the label from Cancer Gene Census as the ground truth instead of the TSGene
@@ -214,7 +44,7 @@ CGC_TS <- CGC_TS %>% mutate("TS_status" = 1) %>% rename(Gene = CGC_TS)
 
 gwide_knn <- rownames_to_column(gwide_knn, var = "Gene")
 #switch the ground truth column from TSGene to CGC
-gwide_knn_CGC <- gwide_knn %>% select(-TS_status) %>%
+gwide_knn_CGC <- gwide_knn  %>%
         full_join(CGC_TS, by = "Gene")
 #replace all the NAs in the TS_status columns with 0s
 gwide_knn_CGC$TS_status[is.na(gwide_knn_CGC$TS_status)] <- 0
@@ -372,7 +202,7 @@ mean_OOB <- function(rf_list) {
 
 mean_OOB_list <- mean_OOB(class_rf_list) #OOB values for all classification RF models
 mean(mean_OOB_list) #average of all OOB values
-boxplot(mean_OOB_list)#visualize distribution of OOB values 
+hist(mean_OOB_list)#visualize distribution of OOB values 
 
  #print(rf1) #use this print out individual RF model 
  #varImpPlot(rf1) #use this to plot the importance for predictor columns
@@ -390,7 +220,6 @@ class_rf_pred <- function(rf_list, test_data){
         return(test_data)
 }
 gwide_test_CGC_new <- class_rf_pred(class_rf_list,gwide_test_CGC)
-
 ```
 
 Rank the genes based on the frequency of being predicted as TS(1)
@@ -433,25 +262,151 @@ as.data.frame(rf_class_result$Gene[1:110][rf_class_result$Gene[1:110] %in% pred_
 ```
 
 
-plot the ROC curve
+Performance measures:
+We will perform performance measures on both training and testing data
+
+Calculate the average performance metrics from all confusion matrix
+```{r,fig.width=18,fig.height=7}
+#training data
+#class_rf_list is the list that contains our 100 bootstrapped RF models, we will calculate the average of each element in all of the confusion matrix
+rf_sample <- class_rf_list[[2]]
+rf_sample$confusion %>% length()
+
+#calculate accuracy, precision, sensitivity and specificity for every bootstrapped confusion matrix and average them
+#initialize empty holder vectors
+accuracy <- vector()
+precision <- vector()
+sensitivity <- vector()
+specificity <- vector()
+for (i in 1:length(class_rf_list)) {
+  conf <- class_rf_list[[i]]$confusion
+  accuracy <- c(accuracy,(conf[1] + conf[4])/(conf[1]+conf[2] + conf[3] + conf[4]))
+  precision <- c(precision,conf[4]/(conf[3] + conf[4]))
+  sensitivity <- c(sensitivity,conf[4]/(conf[2] + conf[4]))
+  specificity <- c(specificity, conf[1]/(conf[1] + conf[3]))
+}
+
+#calculate the mean of these performance metrics
+mean(accuracy)
+mean(precision)
+mean(sensitivity)
+mean(specificity)
+```
+
+Importance of predictor variables
+```{r,fig.width=10,fig.height=7}
+#calculate the average of mean decreases accuracy and mean decreased Gini Index
+#empty holder df for mean decreased accuracy
+mda <- rownames(importance(class_rf_list[[1]])) %>% 
+  as.data.frame() %>%
+  rename(predictor = ".")
+
+#for mean decreased gini index
+mdg <- rownames(importance(class_rf_list[[1]])) %>% 
+  as.data.frame() %>%
+  rename(predictor = ".")
+
+for (i in 1:length(class_rf_list)){
+     imp <- importance(class_rf_list[[i]]) %>%
+       as.data.frame()
+     mda <- c(mda,imp[3]) %>% as.data.frame()
+     mdg <- c(mdg,imp[4]) %>% as.data.frame()
+}
+
+
+#calculate the average for each predictors
+mda <- mutate(mda,mean_decreased_accuracy = rowMeans(mda[2:101]))
+mdg <- mutate(mdg,mean_decreased_gini = rowMeans(mdg[2:101]))
+
+#change the name of the predictors to the correct format
+pred_names <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn.csv",header = FALSE)
+pred_names <- pred_names[1,2:33]
+pred_names <- as.character(pred_names)
+
+mda[1] <- pred_names
+mdg[1] <- pred_names
+#plot mean decreased accuracy
+mda %>%
+  dplyr::arrange(desc(mean_decreased_accuracy)) %>%
+  ggplot(aes(reorder(predictor,mean_decreased_accuracy),mean_decreased_accuracy)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Mean Descrease in Accuracy") +
+  xlab("Predictors")+
+  theme_classic() +
+  theme(axis.text = element_text(size = 10,face = "bold"),
+        axis.title = element_text(size = 15, face = "bold"),
+        title = element_text(size = 15, face = "bold"))
+
+ggsave("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/mean_dec_accuracy.jpg",dpi = 600,units = "in",height = 7,width =10)
+
+#plot mean decreased gini
+mdg %>%
+  dplyr::arrange(desc(mean_decreased_gini)) %>%
+  ggplot(aes(reorder(predictor,mean_decreased_gini),mean_decreased_gini)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Mean Descrease in Gini Index") +
+  xlab("Predictors")+
+  theme_classic() +
+  theme(axis.text = element_text(size = 10,face = "bold"),
+        axis.title = element_text(size = 15, face = "bold"),
+        title = element_text(size = 15, face = "bold"))
+
+ggsave("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/mean_dec_gini.jpg",dpi = 600,units = "in",height = 7,width =10)
+```
+
+
+AUC and ROC curve on training set
 ```{r}
 library(pROC)
-pROC_obj <- roc(as.numeric(gwide_test_CGC$TS_status),as.numeric(gwide_test_CGC$hits),
+rf_sample$votes
+
+rf.roc<-roc(balanced_train_list[[2]]$TS_status,rf_sample$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+
+#calculate the average vote for each gene in the training data set
+vote <- gwide_train_CGC$Gene %>% 
+  as.data.frame() %>%
+  rename(Gene = ".")
+for (i in 1:length(class_rf_list)) {
+  #convert votes for each bootstrapped rf sample to a dataframe
+  bs_vote <- as.data.frame(class_rf_list[[i]]$votes)
+  bs_vote <- rownames_to_column(bs_vote,var = "Gene")
+  bs_vote <- bs_vote[,-2]
+  vote <- full_join(vote,bs_vote,by = "Gene")
+}
+
+#plot the ROC curve
+
+library(pROC)
+pROC_obj <- roc(gwide_train_CGC$TS_status,vote$avg_vote,
             smoothed = TRUE,
             # arguments for ci
-            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            ci=TRUE, ci.alpha=0.90, stratified=FALSE,
             # arguments for plot
             plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
             print.auc=TRUE, show.thres=TRUE)
-
 sens.ci <- ci.se(pROC_obj)
 plot(sens.ci, type="shape", col="lightblue")
 ## Warning in plot.ci.se(sens.ci, type = "shape", col = "lightblue"): Low
 ## definition shape.
 plot(sens.ci, type="bars")
 
-
+#define a function to save the image
+save_jpeg <- function(x, filename, width=7, height=7,res = 300) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   jpeg(filename, width=width, height=height,res = res,units = "in")
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+save_jpeg(p,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/roc.jpg",7,7,600)
 ```
+
+
 
 
 

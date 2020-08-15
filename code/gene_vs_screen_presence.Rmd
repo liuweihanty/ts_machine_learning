@@ -15,56 +15,6 @@ Goal:
 library(pheatmap)
 ```
 
-```{r}
-gene_vs_screen <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/summary_analysis/gene_vs_screen_presence.csv",stringsAsFactors = FALSE) %>%
-        dplyr::select(-c("X")) %>%
-        dplyr::rename(apperance = X..of.screens) %>%
-        arrange(desc(apperance))
-        
-#replace all "Yes" with 1 and all other cells with 0
-gene_vs_screen[,2:14] <- ifelse(gene_vs_screen[,2:14] == "Yes",1,0)
-gene_vs_screen <- column_to_rownames(gene_vs_screen,var = "Gene")     
-
-str(gene_vs_screen)
-
-#Examine which screen has the highest number of genes 
-as.data.frame(colSums(gene_vs_screen)) %>%
-                                                rownames_to_column(var = "screen") %>%
-                                                arrange(desc(colSums(gene_vs_screen)))
-#order the columns in the dataframe by their colsums, descending order.(for plottig)
-gene_vs_screen <- gene_vs_screen[,c("Weissman.2016","Elledge.2018",
-                  "Wallace.2016","Doench.2018",
-                  "Sabatini.2015.GTS","Elledge.2013",
-                  "GCG",
-                  "Sabatini.2015","Weissman.2014",
-                  "Campbell.2018","Sabatini.2017",
-                  "Chen.2019","Brummelkamp.2015","apperance")]
-```
-
-Plot heatmap
-```{r,fig.height=18,fig.width=15}
-pheatmap(as.matrix(gene_vs_screen[1:13]),
-        scale = "none",
-        cexRow = 0.3,cexCol = 3,
-        cellwidth = 50,
-        cellheight = 11,
-         color = c("#d7ebff","#ffd452"),
-         #color = c("#ffe4d8","#ff5e4f"), deep and shallow red  
-        # color = c("#EBF6FF","#64aaff"),  #deep and shallow blue                
-        #border_color = "black",
-        cluster_cols = FALSE,
-        cluster_rows = FALSE,
-        treeheight_col = 0, #get rid of the dendrogram
-        legend_breaks = c(0,1),
-        legend_labels = c("absent in screen","present in screen"),
-        fontsize_col = 20,
-        angle_col = 45)
-
-
-```
-
-
-
 Grand Heatmap:
 
 1).continuous variables:
@@ -185,7 +135,7 @@ grand_sheet <- grand_sheet %>%
 
 Impute missing values
 ```{r}
-#Version 1
+
 # test which column has missing values
 apply(grand_sheet,2,is.na) %>% apply(2,sum)
 #make a duplivate copy for calculating z scores
@@ -196,12 +146,8 @@ grand_sheet_z <- grand_sheet
 
 Calculate z scores
 
-For the predictor columns used in ML, we will try to calculate their z score using two methods:
-Version 1(grand_sheet_z): Just calculate their z score within the group of genes we are plotting. So calculation of z scores for these predictors will be together with all other columns in the grand sheet
-
-Version 2(grand_sheet_2_z):calculating their z score based on their original screen complete data.I already calculated the z scores for all the ML variables based on all the genes in their initial screen, so all left are just calculating the z scores for the rest of the columns seperately.
 ```{r}
-#Version 1
+
 #we will divide the heat map to two parts and plot, the first part is the binary columns:
 grand_sheet_z_binary <- select(grand_sheet_z,c("Gene","CDR_status","CGC_TS")) %>%
         column_to_rownames(var = "Gene")
@@ -222,7 +168,7 @@ Devise a ranking schematic that equally weights three columns and produce a rank
 2.experimental combined score
 3.CDR status
 ```{r ranking}
-#Version 1
+
 #combine the continuous and binary df into one
 grand_sheet_z_all <- cbind(grand_sheet_z_cont,grand_sheet_z_binary)
 str(grand_sheet_z_all)
@@ -276,7 +222,7 @@ quantile_breaks <- function(xs, n = 10) {
   breaks <- quantile(xs, probs = seq(0, 1, length.out = n))
   breaks[!duplicated(breaks)]
 }
-#Verison 1
+
 mat_breaks <- quantile_breaks(as.matrix(grand_sheet_z_cont), n = 10)
 ```
 
@@ -294,7 +240,9 @@ color.palette  <- colorRampPalette(c("navy", "white", "firebrick3"))(length(pale
 
 
 Plot the continuous df according to the sort column weighing the ML score, CDR status and experimental combined score equally
-```{r,fig.width=12,fig.height=24,fig.align="center"}
+```{r,fig.width=12,fig.height=26,fig.align="center"}
+#rename to keep capitalization consistent
+grand_sheet_z_cont <- rename(grand_sheet_z_cont,ML_Score = ML_score)
 library(pheatmap)
 #version 1: crispr screens' z scores only calculated on the genes shown here(the genes used in experiment)
 breaks = c(-3,-2,-1,0,1,2,3)
@@ -324,7 +272,7 @@ save_pheatmap_jpeg <- function(x, filename, width=7, height=7,res = 300) {
    grid::grid.draw(x$gtable)
    dev.off()
 }
-save_pheatmap_jpeg(cont_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/heatmap_cont.jpg",12,24,300)
+save_pheatmap_jpeg(cont_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/heatmap_cont.jpg",12,26,600)
 
 ```
 
@@ -332,10 +280,10 @@ plot binary columns
 ```{r,fig.width=12,fig.height=24,fig.align="center"}
 palette.breaks.bi <- seq(0, 1, 1)
 
-color.palette.bi  <- colorRampPalette(c("#0066CC", "#CC0000"))(length(palette.breaks) - 1)
+color.palette.bi  <- colorRampPalette(c("#482677FF", "#453781FF"))(length(palette.breaks) - 1)
 
-pheatmap(select(grand_sheet_z_binary,-"sort"),
-         color = color.palette.bi,
+bi_heatmap <- pheatmap(select(grand_sheet_z_binary,-"sort"),
+         color = c("#482677FF", "#FDE725FF"),
          #breaks = palette.breaks.bi,
          show_rownames = FALSE,
          drop_levels = TRUE,
@@ -348,11 +296,11 @@ pheatmap(select(grand_sheet_z_binary,-"sort"),
          cluster_cols = FALSE,
          cluster_rows = FALSE,
          angle_col = 45,
-         legend = FALSE,
+         legend = FALSE
          #legend_breaks = seq(0,1,1)
         )
 
-save_pheatmap_jpeg(cont_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/heatmap_bi.jpg",12,24,300)        
+save_pheatmap_jpeg(bi_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/heatmap_bi.jpg",12,24,600)        
 
 ```
 
