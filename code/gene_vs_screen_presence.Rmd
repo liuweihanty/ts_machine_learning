@@ -15,52 +15,294 @@ Goal:
 library(pheatmap)
 ```
 
+Grand Heatmap:
+
+1).continuous variables:
+Proliferation score, 
+Erythroid differentiation impairment score
+Combined experimental score
+z scores on all CRISPR screens we used
+Machine Learning score
+
+2.).categorical variables
+Cancer Gene Census TS status
+CDR status
+
+read in all the predictor columns
 ```{r}
-gene_vs_screen <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/summary_analysis/gene_vs_screen_presence.csv",stringsAsFactors = FALSE) %>%
-        dplyr::select(-c("X")) %>%
-        dplyr::rename(apperance = X..of.screens) %>%
-        arrange(desc(apperance))
-        
-#replace all "Yes" with 1 and all other cells with 0
-gene_vs_screen[,2:14] <- ifelse(gene_vs_screen[,2:14] == "Yes",1,0)
-gene_vs_screen <- column_to_rownames(gene_vs_screen,var = "Gene")     
+rf_predictors <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn_CGC.csv",stringsAsFactors = FALSE)
+#only retain the crispr score and gene name columns
+rf_predictors <- select(rf_predictors,-c("chromosome","TS_status"))
 
-str(gene_vs_screen)
-
-#Examine which screen has the highest number of genes 
-as.data.frame(colSums(gene_vs_screen)) %>%
-                                                rownames_to_column(var = "screen") %>%
-                                                arrange(desc(colSums(gene_vs_screen)))
-#order the columns in the dataframe by their colsums, descending order.(for plottig)
-gene_vs_screen <- gene_vs_screen[,c("Weissman.2016","Elledge.2018",
-                  "Wallace.2016","Doench.2018",
-                  "Sabatini.2015.GTS","Elledge.2013",
-                  "GCG",
-                  "Sabatini.2015","Weissman.2014",
-                  "Campbell.2018","Sabatini.2017",
-                  "Chen.2019","Brummelkamp.2015","apperance")]
 ```
+
+revert sings of activation/over expression screens so that higher positive values means more TS like
+```{r}
+#different scoring systems will rank tumor suppresiveness like traits in different directions, for example, in CRISPR KO screen, a more positive score means more TS like, while in CRISPRa screen, a more negative score means more TS like. Like unify the sign here so that a higher, more positive z score indicates TS. So let's revert the signs of CRISPRa and over expression screens
+rf_predictors$Gilbert.2014.CRISPRa.Growth.phenotype.mean <- -rf_predictors$Gilbert.2014.CRISPRa.Growth.phenotype.mean
+rf_predictors$Sanson.2018.Average.LFC <- -rf_predictors$Sanson.2018.Average.LFC
+rf_predictors$Sack.2019.HMEC.Average.Log2FC.Drop <- -rf_predictors$Sack.2019.HMEC.Average.Log2FC.Drop
+rf_predictors$Sack.2019.HPNE.Average.Log2FC.Drop <- -rf_predictors$Sack.2019.HPNE.Average.Log2FC.Drop
+rf_predictors$Horlbeck.2016.CRISPRa.average.phenotype.of.strongest <- -rf_predictors$Horlbeck.2016.CRISPRa.average.phenotype.of.strongest
+```
+
+calculate the z score of crispr screen columns based on all the genes. Later we will also calculate the z scores just on the 100+ genes we are presenting
+```{r}
+z_score <- function(x){
+        (x - mean(x))/sd(x)
+}
+
+#examine how many NA values each colum has
+apply(rf_predictors[2:ncol(rf_predictors)],2,is.na) %>% apply(2,sum)
+#examine which gene contains NA values
+rf_predictors[is.na(rf_predictors$Blomen.2015.hap1.GTS.ratio),]
+#get rid of the gene contains NA value
+rf_predictors <- filter(rf_predictors,Gene != "MALAT1")
+#make a copy of the rf_predictors to store z scores calculate on all genes
+rf_predictors_z_all <- rf_predictors
+#calculate z scores for each column
+rf_predictors_z_all[2:ncol(rf_predictors_z_all)] <- apply(rf_predictors_z_all[2:ncol(rf_predictors_z_all)], 2, z_score) 
+str(rf_predictors_z_all)
+```
+
+
+Read in classification machine learning score
+```{r}
+rf_class_result <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE)
+
+#version with bootstrapped ML
+rf_class_result <-  dplyr::select(rf_class_result,-"X") 
+
+#create a binary version of rf_class_result result, the one above contains the bootstrapped score
+#extract the genes with a ML socre of more than 150.(range of score is 100-200) These are the genes that are predicted to be TS in more than half of the times
+rf_class_result_150_more <- filter(rf_class_result,TS_freq >= 150) %>% 
+                         select(-"TS_freq") %>%
+                         mutate(RF_status = 1)
+        
+str(rf_class_result_150_more)
+```
+
+
+Proliferation score, 
+Erythroid differentiation impairment score
+Combined experimental score
+```{r}
+exp_score <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+exp_score <- select(exp_score,c("Gene","avg.pro","avg.ery","avg_comb"))
+str(exp_score)
+```
+
+CGC status
+```{r}
+CGC_status <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
+CGC_status <- select(CGC_status,"Gene.Symbol") %>% 
+        rename(Gene = Gene.Symbol) %>% mutate(CGC_TS = 1)
+```
+
+CDR status
+```{r}
+CDR_status <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE,header = FALSE)
+names(CDR_status) <- "Gene"
+CDR_status <- mutate(CDR_status,CDR_status = 1)
+```
+Combine everything together, note we will only plot the genes used in experiment
+
+for random forest result we have two versions
+rf_class_result: with bootstrapped score
+rf_class_result_150_more: the genes whose bootstrapped score above 150, and with a binary column indicating Yes/No
+
+Let's use the bootstrapped score, and create two versions, 
+version 1: all the ML predictor columns their z score are only calculated on the 100 + genes presented in the heatmap
+version 2: all the ML predictor columns their z score calculated on all genes in their initial data set
+```{r,}
+grand_sheet <- left_join(exp_score,rf_class_result,by = "Gene") %>% 
+        left_join(CGC_status, by = "Gene") %>%
+        left_join(CDR_status, by = "Gene")
+#convert the NAs in CGC status and CDR status to 0
+grand_sheet$CGC_TS[is.na(grand_sheet$CGC_TS)] <- 0
+grand_sheet$CDR_status[is.na(grand_sheet$CDR_status)] <- 0
+#convert the NAs in the TS_fre(ML bootstrapped score column) into 100, which is equivalent to 0
+grand_sheet$TS_freq[is.na(grand_sheet$TS_freq)] <- 100
+#delete control genes AAVS1,GATA1,PTEN, Mock
+grand_sheet <- filter(grand_sheet,!(Gene %in% c("AAVS1","GATA1","PTEN","Mock")))
+#relocate columns to leave all the crispr screen data to the ;later half
+grand_sheet <- grand_sheet %>% 
+                      relocate(c("TS_freq","CDR_status","CGC_TS"),.after = avg_comb)
+
+```
+
+
+
+Impute missing values
+```{r}
+
+# test which column has missing values
+apply(grand_sheet,2,is.na) %>% apply(2,sum)
+#make a duplivate copy for calculating z scores
+grand_sheet_z <- grand_sheet
+
+```
+
+
+Calculate z scores
+
+```{r}
+
+#we will divide the heat map to two parts and plot, the first part is the binary columns:
+grand_sheet_z_binary <- select(grand_sheet_z,c("Gene","CDR_status","CGC_TS")) %>%
+        column_to_rownames(var = "Gene")
+#the second is the continuous columns:
+grand_sheet_z_cont <- select(grand_sheet_z,-c("CDR_status","CGC_TS")) %>%
+        column_to_rownames(var = "Gene")
+#convert the continuous dataframe to z scores
+z_score <- function(x){
+        (x - mean(x))/sd(x)
+}
+grand_sheet_z_cont <- as.data.frame(apply(grand_sheet_z_cont,2,z_score))
+
+```
+
+
+Devise a ranking schematic that equally weights three columns and produce a ranking order:
+1.ML score
+2.experimental combined score
+3.CDR status
+```{r ranking}
+
+#combine the continuous and binary df into one
+grand_sheet_z_all <- cbind(grand_sheet_z_cont,grand_sheet_z_binary)
+str(grand_sheet_z_all)
+
+#min max normalize the ML score and experimental combined score columns so that their values are linearly transformed to fall on the range of (0,1). Note the data are already in z score, so we don't need to worry about outliers
+min_max_norm <- function(x){
+      (x - min(x))/(max(x) - min(x))  
+}
+grand_sheet_z_all$TS_freq_MM <- min_max_norm(grand_sheet_z_all$TS_freq)
+grand_sheet_z_all$avg_comb_MM <- min_max_norm(grand_sheet_z_all$avg_comb)
+
+#now, the binary CDR status column is either 0, or1, and the min-max transformed TF_Freq and avg_comb scores are also on the range of (0,1), we can assume they are on the same scale
+grand_sheet_z_all$sort <- grand_sheet_z_all$TS_freq_MM +
+        grand_sheet_z_all$avg_comb_MM +
+        grand_sheet_z_all$CDR_status
+
+density(grand_sheet_z_all$sort) %>% plot()    
+
+#bind the sorting column back to grand_sheet_z_cont and grand_sheet_z_binary, and sort them according to the sort column
+grand_sheet_z_cont <- cbind(grand_sheet_z_cont,grand_sheet_z_all$sort)
+grand_sheet_z_cont <- rename(grand_sheet_z_cont,sort = "grand_sheet_z_all$sort")
+grand_sheet_z_cont <- grand_sheet_z_cont[order(grand_sheet_z_cont$sort,decreasing = TRUE),]
+#change the column names of grand_sheet_z_cont
+grand_sheet_z_cont <- grand_sheet_z_cont %>%
+  rename(Proliferation = avg.pro,
+         Differentiation = avg.ery,
+         Combined_Score = avg_comb)
+#change the TS_Freq to ML_score
+grand_sheet_z_cont <- grand_sheet_z_cont %>% rename(ML_score = TS_freq)
+
+grand_sheet_z_binary <- cbind(grand_sheet_z_binary,grand_sheet_z_all$sort) %>%
+        rename(sort = "grand_sheet_z_all$sort")
+
+grand_sheet_z_binary <-grand_sheet_z_binary[order(grand_sheet_z_binary$sort,decreasing = TRUE),]
+
+
+
+```
+
+
 
 Plot heatmap
-```{r,fig.height=18,fig.width=15}
-pheatmap(as.matrix(gene_vs_screen[1:13]),
-        scale = "none",
-        cexRow = 0.3,cexCol = 3,
-        cellwidth = 50,
-        cellheight = 11,
-         color = c("#d7ebff","#ffd452"),
-         #color = c("#ffe4d8","#ff5e4f"), deep and shallow red  
-        # color = c("#EBF6FF","#64aaff"),  #deep and shallow blue                
-        #border_color = "black",
-        cluster_cols = FALSE,
-        cluster_rows = FALSE,
-        treeheight_col = 0, #get rid of the dendrogram
-        legend_breaks = c(0,1),
-        legend_labels = c("absent in screen","present in screen"),
-        fontsize_col = 20,
-        angle_col = 45)
+```{r convert to quartile break}
+library(heatmap3)
+library(pheatmap)
+library(RColorBrewer)
+library(viridis)
 
+#use quantile breaks for the continuous heatmap, in this case each color will represents equal % of data
+quantile_breaks <- function(xs, n = 10) {
+  breaks <- quantile(xs, probs = seq(0, 1, length.out = n))
+  breaks[!duplicated(breaks)]
+}
+
+mat_breaks <- quantile_breaks(as.matrix(grand_sheet_z_cont), n = 10)
+```
+
+Another way of adjusting color
+```{r}
+# following code limits the lowest and highest color to 5%, and 95% of your range, respectively
+quantile.range <- quantile(as.matrix(grand_sheet_z_cont), probs = seq(0, 1, 0.01))
+palette.breaks <- seq(-4, 4, 0.1)
+
+# use http://colorbrewer2.org/ to find optimal divergent color palette (or set own)
+color.palette  <- colorRampPalette(c("navy", "white", "firebrick3"))(length(palette.breaks) - 1)
 
 ```
+
+
+
+Plot the continuous df according to the sort column weighing the ML score, CDR status and experimental combined score equally
+```{r,fig.width=12,fig.height=26,fig.align="center"}
+#rename to keep capitalization consistent
+grand_sheet_z_cont <- rename(grand_sheet_z_cont,ML_Score = ML_score)
+library(pheatmap)
+#version 1: crispr screens' z scores only calculated on the genes shown here(the genes used in experiment)
+breaks = c(-3,-2,-1,0,1,2,3)
+cont_heatmap <- pheatmap(scale(select(grand_sheet_z_cont,-"sort")),
+         color = color.palette,
+         #color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+         border_color = "grey",
+         breaks = palette.breaks,
+         display_numbers = FALSE,
+         gaps_col = 4,
+         drop_levels = TRUE,
+         cellheight = 15,
+         cellwidth = 40,
+         fontsize_row = 14,
+         fontsize_col = 22,
+         cluster_cols = FALSE,
+         cluster_rows = FALSE,
+         angle_col = 45)
+cont_heatmap 
+
+#the pheatmap package doesn't run with ggsave, so manually define a function to save the plot
+save_pheatmap_jpeg <- function(x, filename, width=7, height=7,res = 300) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   jpeg(filename, width=width, height=height,res = res,units = "in")
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+save_pheatmap_jpeg(cont_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/heatmap_cont.jpg",12,26,600)
+
+```
+
+plot binary columns
+```{r,fig.width=12,fig.height=24,fig.align="center"}
+palette.breaks.bi <- seq(0, 1, 1)
+
+color.palette.bi  <- colorRampPalette(c("#482677FF", "#453781FF"))(length(palette.breaks) - 1)
+
+bi_heatmap <- pheatmap(select(grand_sheet_z_binary,-"sort"),
+         color = c("#482677FF", "#FDE725FF"),
+         #breaks = palette.breaks.bi,
+         show_rownames = FALSE,
+         drop_levels = TRUE,
+         border_color = "grey",
+         display_numbers = FALSE,
+         cellheight = 15,
+         cellwidth = 40,
+        # fontsize_row = 14,
+         fontsize_col = 22,
+         cluster_cols = FALSE,
+         cluster_rows = FALSE,
+         angle_col = 45,
+         legend = FALSE
+         #legend_breaks = seq(0,1,1)
+        )
+
+save_pheatmap_jpeg(bi_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/heatmap_bi.jpg",12,24,600)        
+
+```
+
 
 
