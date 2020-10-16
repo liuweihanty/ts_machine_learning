@@ -97,6 +97,8 @@ We decided to use the average normalized expression instead of the z score metho
 3.Sample size is small(#of replicate), so we cannot assume their distribution is normal. Therefore we will use non-parametric Mann-Whitney U test
 
 4.We will perform the test on the normalized(gene - AAVS1) and min-max transformed data. This data is what we used for the final ranking
+
+5.Perform multiple hypothesis correction on the p values
 ```{r}
 #create a copy data for significance test
 ery.byplate.test <- ery.byplate %>%
@@ -156,49 +158,62 @@ pro.ery.merged[pro.ery.merged == "NaN"] <- NA #convert the NaN sumbol to R-recog
 
 define a function to perform Mann-Whitnet test comparing each gene to AAVS1
 ```{r}
+test <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv")
+qval <- qvalue(test$MW_test_p)
+qval$qvalues
+
+#BiocManager::install("qvalue")
+library(qvalue)
 mw_test <- function(df,alpha){ 
         rownames_df <- rownames(df)
-        df <- mutate(df,t_test_p = NA)
+        df <- mutate(df,MW_test_p = NA) 
+        
         AAVS1 <- as.numeric(df[1,])
         for (i in 1:nrow(df)) {
             x <- wilcox.test(AAVS1,as.numeric(df[i,]),alternative = "less")
-            df[i,"t_test_p"] <- x$p.value
+            df[i,"MW_test_p"] <- x$p.value
         }
+        df$qvalue <- (qvalue(df$MW_test_p,pfdr = TRUE))$qvalues
         row.names(df) <- rownames_df
-        hits <- filter(df,t_test_p < alpha)
+        hits <- filter(df,qvalue < alpha)
         return(list(df,hits))
 }
 ```
 
 ```{r}
-pro.ery.merged.p <- mw_test(pro.ery.merged,0.05)[[1]]
+library(tibble)
+pro.ery.merged.p <- mw_test(pro.ery.merged,0.13)[[1]]
 #the significant genes when performing proliferation and erythrocyte score together        
-pro.ery.hits <- rownames(mw_test(pro.ery.merged,0.05)[[2]]) 
+pro.ery.hits <- rownames(mw_test(pro.ery.merged,0.13)[[2]]) 
 
 #save the file with p values in it
 write.csv(pro.ery.merged.p,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_p_values.csv")
+
+#join the p value column with the experimental score file
+comb_ranking <- rownames_to_column(comb_df_norm, var = "Gene") %>% left_join(
+        select(rownames_to_column(pro.ery.merged.p,var = "Gene"),c("Gene","MW_test_p","qvalue")), by = "Gene")
+#save the updated experimental score file
+write.csv(comb_ranking,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv")
 ```
 
  
 
 Plotting
 ```{r, fig.width=5,fig.height=3.5}
-comb_df_norm <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+comb_ranking <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
 
 library(ggrepel)
-#obtain the top ranked genes by both z score and 
-comb_df_norm <- rownames_to_column(comb_df_norm, var = "Gene")
 
 #label the significant genes detected by Mann-Whitney test on combined proliferation and erythrocyte differentiation score
-sig_genes_highlight <- filter(comb_df_norm,Gene %in% pro.ery.hits)
+sig_genes_highlight <- filter(comb_ranking,Gene %in% pro.ery.hits)
 #select out AAVS1 for highlighting
-AAVS1_highlight <- filter(comb_df_norm,Gene == "AAVS1")
+AAVS1_highlight <- filter(comb_ranking,Gene == "AAVS1")
 
-comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) + 
+comb_ranking %>% ggplot(aes(x = avg.pro,y = avg.ery)) + 
         geom_point(alpha = 0.3) +
         geom_point(data = sig_genes_highlight, aes(x = avg.pro,y = avg.ery), color = "red", size = 2)+
         geom_point(data = AAVS1_highlight, aes(x = avg.pro,y = avg.ery), color = "blue", size = 2)+
-        geom_text_repel(aes(label=ifelse(comb_df_norm$Gene %in% pro.ery.hits | comb_df_norm$Gene == "AAVS1",as.character(Gene),''))) +
+        geom_text_repel(aes(label=ifelse(comb_ranking$Gene %in% pro.ery.hits | comb_ranking$Gene == "AAVS1",as.character(Gene),''))) +
         #ggtitle("Top 20% genes ranked by AAVS1 normalized combined values") +
         labs(x = "normalized proliferation", y = "normalized erythrocyte differentiation") +
         theme_bw() +
@@ -211,6 +226,8 @@ comb_df_norm %>% ggplot(aes(x = avg.pro,y = avg.ery)) +
               axis.line = element_line(colour = "black")) 
         
 ggsave("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/pro_ery_score.jpg",dpi = 600,height=7, width=7, units="in")
+
+ggplot(comb_ranking,aes(x = MW_test_p)) + geom_histogram(color = "black", fill = "white")
 ```
 
 

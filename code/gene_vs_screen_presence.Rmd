@@ -306,3 +306,107 @@ save_pheatmap_jpeg(bi_heatmap,"/Users/weihan/Documents/GitHub/ts_machine_learnin
 
 
 
+Create a master table containing all the relevant data from this study
+
+#Create list of genes from each category of interest
+1.predicted TS from classification random forest after boostrapping
+```{r}
+classrf_result <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap.csv",stringsAsFactors = FALSE) %>%
+  dplyr::select(-"X") %>%
+  dplyr::rename(class_rf_score = TS_freq)
+```
+
+
+2.CGC labeled TS on chr7(our training "gold standard")
+```{r}
+CGC_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
+CGC_TS <- select(CGC_TS,c("Gene.Symbol","Genome.Location"))
+CGC_TS_chr7 <- filter(CGC_TS,grepl("^7:",Genome.Location)) %>%
+        select("Gene.Symbol")
+colnames(CGC_TS_chr7) <- "CGC_gene"
+CGC_TS_chr7 <- CGC_TS_chr7 %>% dplyr::rename(Gene = CGC_gene)
+CGC_TS_chr7$CGC_TS_status = 1
+CGC_TS_chr7
+```
+4.TSGene databased labeled TS
+```{r}
+TS_Gene <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/TSGene_all.csv",stringsAsFactors = FALSE) %>%
+        dplyr:: filter(Chromosome == "7") %>%
+        dplyr::select("GeneSymbol") %>%
+        dplyr::rename(Gene = GeneSymbol) %>%
+        dplyr::mutate(TS_Gene_status = 1)
+```
+
+
+5.Elledge TS
+```{r}
+Elledge_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Elledge_2013_TS.csv",stringsAsFactors = FALSE)
+Elledge_TS <- Elledge_TS %>% 
+        dplyr::select(c("Gene","TUSON_q_value_TSG","TSG_Probability_LASSO","Chromosome")) %>% 
+        dplyr::filter(Chromosome == "7") %>%
+        dplyr::arrange(desc(TSG_Probability_LASSO)) %>%
+        #filter(TSG_Probability_LASSO > 0.3) %>%
+        dplyr::select(c("Gene","TSG_Probability_LASSO")) %>%
+        dplyr::rename(Elledge_TSG_Prob_LASSO = TSG_Probability_LASSO)
+
+Elledge_TS
+```
+
+
+6..Jeremy datamined TS
+```{r}
+jeremy_ts_datamine <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/96ts_work_data.csv") %>%
+        dplyr::select("Gene") %>%
+        mutate(Jeremy_datamine = 1)
+
+```
+
+
+7.genes on commonly deleted region(CDR)
+```{r}
+CDR_genes <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/CDR_list.csv",stringsAsFactors = FALSE,header = FALSE) %>%
+        dplyr::rename(Gene = V1) %>%
+        dplyr::mutate(CDR_gene = 1)
+
+```
+
+8.genes from experiment hits
+```{r}
+comb_ranking <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/z_value_calc/comb_ranking.csv",stringsAsFactors = FALSE)
+comb_ranking_avg <- comb_ranking %>% 
+        dplyr::select(c("Gene","avg_comb")) %>%
+        dplyr::rename(exp_comb_score = avg_comb)
+```
+
+
+combine all gene sets together into a master table
+```{r}
+
+#1.classification random forest result: classrf_result
+#2.CGC labeled TS: CGC_TS_chr7
+#3.TSgene labeled TS: TS_Gene
+#4.Elledge 2013 ranked TS: Elledge_TS
+#5.Jeremy datamined TS: jeremy_ts_datamine
+#6.CDR genes: CDR_genes
+#7.Jeremy experimental genes(with averaged expression score(my method)) comb_ranking_avg
+#
+
+#merge every data table using FULL join
+library(tidyverse)
+Chr7_TS_master <- list(
+     classrf_result,
+     CGC_TS_chr7,
+     TS_Gene,
+     Elledge_TS,
+     jeremy_ts_datamine,
+     CDR_genes,
+     comb_ranking_avg
+     )  %>%
+        reduce(full_join,by= "Gene") %>%
+  distinct()
+
+
+write.csv(Chr7_TS_master,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/summary_analysis/Chr7_TS_master.csv")
+
+```
+

@@ -85,7 +85,7 @@ train_data_generate <- function(train_data = gwide_train_CGC){
 
 
 #run the function 100 times and store the resulted training data in a list
-balanced_train_list  <- lapply(seq_len(100),function(x) train_data_generate(gwide_train_CGC))
+balanced_train_list  <- lapply(seq_len(1000),function(x) train_data_generate(gwide_train_CGC))
 
 ```
 
