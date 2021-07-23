@@ -177,6 +177,12 @@ Sabb17.MonoMac1:
     Cancer Type: AML
     Data Type: CRISPRko Score
 
+Sabb17.MV411:
+    Paper: Sabatini 2017
+    Cell line: MV411
+    Cancer Type: Biphenotypic Leukemia(mixture of AML and ALL)
+    Data Type: CRISPRko Score
+
 Sabb17.NB4.rep1:
     Paper: Sabatini 2017
     Cell line: NB4
@@ -235,6 +241,12 @@ Sabb17.THP1:
     Cell line: THP1
     Cancer Type: AML
     Data Type: CRISPRko Score
+
+Wallace16.MV411
+    Paper: Wallace 2016
+    Cell line: MV411
+    Cancer Type: AML
+    Data Type: CRISPRi Score
 
 Weis16.csa.MW.pvalue:
     Paper: Weissman 2016

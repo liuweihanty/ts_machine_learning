@@ -1,0 +1,426 @@
+---
+title: "gwide_random_forest_implementation"
+author: "Weihan Liu"
+date: "17/02/2020"
+output: html_document
+---
+
+##Install relevant packages
+```{r,results='hide'}
+library(randomForest)  #ML
+library(caret)  #ML
+library(ggplot2) #plotting
+library(dplyr) #data manipulation
+library(tibble) #data manipulation
+library(stats) #data manipulation
+```
+
+
+##Read in preprocessed file
+```{r}
+gwide_knn <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/gwide_dup_rm_knn_AML_CML_only.csv",stringsAsFactors = FALSE)
+glimpse(gwide_knn)
+```
+
+some data cleaning
+```{r}
+#label the gene names to be rowname of the df
+rownames(gwide_knn) <- make.names(gwide_knn$Gene,unique = TRUE)
+gwide_knn <- select(gwide_knn, -c("X","Gene"))
+head(gwide_knn)
+
+#remove the TS_status column, this is TS label from TS gene, we will no longer use it, instead we will use the TS label from CGC
+gwide_knn <- select(gwide_knn,-TS_status)
+```
+
+
+Use the label from Cancer Gene Census as the ground truth instead of the TSGene
+##Read in the data and switch the ground truth column
+```{r}
+#read in the CGC data
+CGC_TS <- read.csv("/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/GCG_TS.csv",stringsAsFactors = FALSE)
+CGC_TS <- CGC_TS$Gene.Symbol 
+CGC_TS <- as.data.frame(CGC_TS)
+CGC_TS <- CGC_TS %>% mutate("TS_status" = 1) %>% rename(Gene = CGC_TS)
+
+gwide_knn <- rownames_to_column(gwide_knn, var = "Gene")
+#switch the ground truth column from TSGene to CGC
+gwide_knn_CGC <- gwide_knn  %>%
+        full_join(CGC_TS, by = "Gene")
+#replace all the NAs in the TS_status columns with 0s
+gwide_knn_CGC$TS_status[is.na(gwide_knn_CGC$TS_status)] <- 0
+
+glimpse(gwide_knn_CGC)
+
+```
+
+
+##Split the training vs testing data
+create training data, which is all of the non-chromosome 7 genes. The training data is unbalanced, majority of genes are non CGC labeled TS, so their TS status = 0
+```{r}
+gwide_train_CGC <- gwide_knn_CGC %>%
+        filter(chromosome != 7 & chromosome != "MT")
+
+table(gwide_train_CGC$chromosome)
+```
+
+Balance the training data set by sampling non-TS from the training data set using bootstrapping
+```{r}
+set.seed(683723)
+
+#function to generate the balanced training data
+# input is the unbalanced unsampled training data
+train_data_generate <- function(train_data = gwide_train_CGC){
+
+        gwide_train_balance_CGC <- filter(train_data,TS_status == 0) %>% 
+                                grouped_df("chromosome") %>%
+                                sample_frac(size = 0.02)
+                        
+        gwide_train_balance_CGC <- as.data.frame(gwide_train_balance_CGC)
+        gwide_train_balance_CGC <- rbind(gwide_train_balance_CGC,filter(gwide_train_CGC,TS_status == 1))
+        gwide_train_balance_CGC$TS_status <- as.factor(gwide_train_balance_CGC$TS_status)
+        gwide_train_balance_CGC <- column_to_rownames(gwide_train_balance_CGC,var = "Gene")
+        
+        return(gwide_train_balance_CGC )
+}
+
+
+#run the function 1000 times and store the resulted training data in a list
+balanced_train_list  <- lapply(seq_len(1000),function(x) train_data_generate(gwide_train_CGC))
+
+```
+
+Generate testing data
+```{r}
+#creating testing set, which will be all genes on chromosome 7
+gwide_test_CGC <- gwide_knn_CGC %>%
+        filter(chromosome == 7)
+gwide_test_CGC$TS_status <- as.factor(gwide_test_CGC$TS_status)
+gwide_test_CGC <- select(gwide_test_CGC, -"chromosome")
+gwide_test_CGC <- column_to_rownames(gwide_test_CGC,var = "Gene")
+
+str(gwide_test_CGC)
+
+```
+
+
+training data list: balanced_train_list
+testing data: gwide_test_CGC
+
+##Hyperparameter tuning
+We will use a grid search based method to exhaustively search for the best combination hyperparameters, which will give the smallest OOB error
+```{r}
+#' @ntree: number of trees, default is 500
+#' @mtry: number of variables randomly sampled as candidates at each split
+#' @samplesize: number of samples(rows) to train on, default = 63.2%
+#' @nodesize: minimum size(# of samples) pf the terminal nodes, if small, allows deeper and more complex tree
+#' @maxnodes: maximum number of terminal nodes
+
+#grid search
+#Establish a list of possible values for mtry, nodesize and sampsize
+mtry <- seq(4, ncol(balanced_train_list[[1]]) * 0.8, 2)
+nodesize <- seq(3, 10, 2)
+sampsize <- nrow(balanced_train_list[[1]]) * c(0.7,0.8)
+#create an empty holder dataframe to hold all the hyperparatmeters creates for each boostrap
+
+best_hyper_all <- data.frame()
+
+hyper_parameter_tune <- function(train_data,mtry,nodesize,sampsize){
+        for (k in 1:length(train_data)){
+                # Create a data frame containing all combinations 
+                hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
+                # Create an empty vector to store OOB error values
+                oob_err <- c()
+                
+                # Write a loop over the rows of hyper_grid to train the grid of models
+                for (i in 1:nrow(hyper_grid)) {
+                
+                    # Train a Random Forest model
+                    rf_model <- randomForest(formula = TS_status ~ ., 
+                                          data = select(train_data[[k]],-c("chromosome")),
+                                          mtry = hyper_grid$mtry[i],
+                                          nodesize = hyper_grid$nodesize[i],
+                                          sampsize = hyper_grid$sampsize[i])
+                                          
+                    # Store OOB error for the model                      
+                    oob_err[i] <- rf_model$err.rate[nrow(rf_model$err.rate), "OOB"]
+                }
+        
+                # Identify optimal set of hyperparmeters based on OOB error
+                opt_i <- which.min(oob_err)
+                best_hyper <- hyper_grid[opt_i,]
+                best_hyper_all <- rbind(best_hyper_all,best_hyper) 
+        }
+       return(best_hyper_all)        
+}  
+```
+
+```{r,message=FALSE,warning=FALSE}
+set.seed(57895758)
+best_hyper_all <- hyper_parameter_tune(balanced_train_list,mtry,nodesize,sampsize) 
+ 
+```
+
+
+## fit of random forest model using the optimal hyperparameters
+```{r, fig.height=4, fig.width=8}
+set.seed(2245646)
+#' @train_data_list: list of randomly sampled training data
+#' @hyperparameter_grid: a dataframe of hyperparameteers corresponding to your training data list. Each training data in the list has a corresponding combination of hyperparameters
+
+
+run_class_rf <- function(train_data_list = balanced_train_list,hyperparameter_grid = best_hyper_all) {
+        rf_list <- vector(mode = "list",length = length(balanced_train_list)) #empty holder list to hold all the rf model 
+        for (i in 1:length(train_data_list)) {
+                rf = randomForest(TS_status ~ .,
+                                  data = select(train_data_list[[i]],
+                                   -"chromosome"),
+                                  importance = TRUE,
+                                  mtry = hyperparameter_grid[i,1],
+                                  nodesize = hyperparameter_grid[i,2],
+                                  sampsize = floor(hyperparameter_grid[i,3])) # it's mandatory you round the sample size here to an integer, otherwise the predict() code will break
+                                  rf_list[[i]] <- rf
+        }
+        return(rf_list)
+}
+
+class_rf_list <- run_class_rf(balanced_train_list,best_hyper_all)
+
+```
+
+Examine overall OOB rate
+```{r}
+set.seed(8976969)
+#' @rf_list: list containing all rf models
+mean_OOB <- function(rf_list) {
+        OOB_list <- numeric(length = length(rf_list)) #empty holder vector to hold all the OOBs
+        for (i in 1:length(rf_list)){
+            err <- as.data.frame(rf_list[[i]]$err.rate) 
+            OOB <- mean(err$OOB) #mean OOB for each model
+            OOB_list[[i]] <- OOB
+        }
+        return(OOB_list)
+}
+
+mean_OOB_list <- mean_OOB(class_rf_list) #OOB values for all classification RF models
+mean(mean_OOB_list) #average of all OOB values
+hist(mean_OOB_list)#visualize distribution of OOB values 
+
+ #print(rf1) #use this print out individual RF model 
+ #varImpPlot(rf1) #use this to plot the importance for predictor columns
+```
+
+
+##Predict the test set
+```{r}
+set.seed(57835678)
+#' @rf_list: list of random forest models from bootstrapping
+class_rf_pred <- function(rf_list, test_data){
+        for (i in 1:length(rf_list)){
+                test_data <- cbind(test_data,predict(object = rf_list[[i]],newdata = test_data,type = "class")) #attach all the prediction results for every bootstrapp to the test data
+        } 
+        return(test_data)
+}
+gwide_test_CGC_new <- class_rf_pred(class_rf_list,gwide_test_CGC)
+```
+
+Rank the genes based on the frequency of being predicted as TS(1)
+```{r}
+#convert all prediction result columns to numeric, for addition
+for (i in 1:ncol(gwide_test_CGC_new)) {
+        if(startsWith(colnames(gwide_test_CGC_new)[i],"predict")) { #all of the predicted result binary columns starts with "predict"
+        gwide_test_CGC_new[,i] <- as.numeric(gwide_test_CGC_new[,i])
+        }
+}
+#add all prediction result for all bootstrapped samples, and store this summation in a columns
+gwide_test_CGC_new$hits_total <- rowSums(gwide_test_CGC_new[,startsWith(colnames(gwide_test_CGC_new),"predict")]) 
+
+rf_class_result <- as.data.frame(rowSums(gwide_test_CGC_new[,startsWith(colnames(gwide_test_CGC_new),"predict")])) 
+colnames(rf_class_result) = "TS_freq"
+rf_class_result <- rownames_to_column(rf_class_result,var = "Gene")
+rf_class_result <- rf_class_result[order(rf_class_result$TS_freq,decreasing = TRUE),]
+rf_class_result #this is the list of TSs, ranked by their total frquency, predicted by a bootstrapped sampling(100 times) of classification random forest
+
+#export the predicted hits
+write.csv(rf_class_result, "/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/pred_hits_CGC_bootstrap_AML_CML_only.csv")
+```
+
+
+Examine overlaps
+```{r}
+#overlapping between CGC labeled TS and the predicted TS, take top 200 genes from the predicted result
+high_conf_hits <- as.data.frame(rf_class_result$Gene[1:200][rf_class_result$Gene[1:200] %in% CGC_TS$Gene])
+high_conf_hits
+#7 overlaps
+
+#overlapping between Jeremy's 96 genes with the predicted TS
+#load jeremy's 96 experimentally discovered putative TS:
+jeremy_genes <- readxl::read_excel("/Users/weihan/Documents/GitHub/ts_machine_learning/data/96_TS_presence_in_screens.xlsx")
+jeremy_genes <- jeremy_genes$Gene
+jeremy_genes_overlap <- as.data.frame(rf_class_result$Gene[1:200][rf_class_result$Gene[1:200] %in% jeremy_genes])
+jeremy_genes_overlap
+#37 overlaps
+
+```
+
+
+Performance measures:
+We will perform performance measures on both training and testing data
+
+Calculate the average performance metrics from all confusion matrix
+```{r,fig.width=18,fig.height=7}
+#training data
+#class_rf_list is the list that contains our 100 bootstrapped RF models, we will calculate the average of each element in all of the confusion matrix
+rf_sample <- class_rf_list[[2]]
+rf_sample$confusion %>% length()
+
+
+accuracy <- vector()
+precision <- vector()
+sensitivity <- vector()
+specificity <- vector()
+for (i in 1:length(class_rf_list)) {
+  conf <- class_rf_list[[i]]$confusion
+  accuracy <- c(accuracy,(conf[1] + conf[4])/(conf[1]+conf[2] + conf[3] + conf[4]))
+  precision <- c(precision,conf[4]/(conf[3] + conf[4]))
+  sensitivity <- c(sensitivity,conf[4]/(conf[2] + conf[4]))
+  specificity <- c(specificity, conf[1]/(conf[1] + conf[3]))
+}
+
+#calculate the mean of these performance metrics
+mean(accuracy)
+mean(precision)
+mean(sensitivity)
+mean(specificity)
+```
+
+Importance of predictor variables
+```{r,fig.width=8,fig.height=6}
+#calculate the average of mean decreases accuracy and mean decreased Gini Index
+#empty holder df for mean decreased accuracy
+mda <- rownames(importance(class_rf_list[[1]])) %>% 
+  as.data.frame() %>%
+  rename(predictor = ".")
+
+#for mean decreased gini index
+mdg <- rownames(importance(class_rf_list[[1]])) %>% 
+  as.data.frame() %>%
+  rename(predictor = ".")
+
+for (i in 1:length(class_rf_list)){
+     imp <- importance(class_rf_list[[i]]) %>%
+       as.data.frame()
+     mda <- c(mda,imp[3]) %>% as.data.frame()
+     mdg <- c(mdg,imp[4]) %>% as.data.frame()
+}
+
+
+#calculate the average for each predictors
+mda <- mutate(mda,mean_decreased_accuracy = rowMeans(mda[2:1001]))
+mdg <- mutate(mdg,mean_decreased_gini = rowMeans(mdg[2:1001]))
+
+#plot mean decreased accuracy
+mda %>%
+  dplyr::arrange(desc(mean_decreased_accuracy)) %>%
+  ggplot(aes(reorder(predictor,mean_decreased_accuracy),mean_decreased_accuracy)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Mean Descrease in Accuracy") +
+  xlab("Predictors")+
+  theme_classic() +
+  theme(axis.text = element_text(size = 10,face = "bold"),
+        axis.title = element_text(size = 15, face = "bold"),
+        title = element_text(size = 15, face = "bold"))
+
+ggsave("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/mean_dec_accuracy_AML_CML_only.jpg",dpi = 600,units = "in",height = 7,width =10)
+
+#plot mean decreased gini
+mdg %>%
+  dplyr::arrange(desc(mean_decreased_gini)) %>%
+  ggplot(aes(reorder(predictor,mean_decreased_gini),mean_decreased_gini)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Mean Descrease in Gini Index") +
+  xlab("Predictors")+
+  theme_classic() +
+  theme(axis.text = element_text(size = 10,face = "bold"),
+        axis.title = element_text(size = 15, face = "bold"),
+        title = element_text(size = 15, face = "bold"))
+
+ggsave("/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/mean_dec_gini_AML_CML_only.jpg",dpi = 600,units = "in",height = 7,width =10)
+```
+
+
+AUC and ROC curve on training set
+plot and calculate AUC for the second RF model in the list as an example
+```{r}
+library(pROC)
+library(Rcpp)
+
+rf_sample$votes
+rf.roc<-roc(balanced_train_list[[2]]$TS_status,rf_sample$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+```
+
+
+Implement ROC for the bootstrapped RF models
+ROC() function requires two outputs: 1).The ground truth label, 2)The predicted label.  For 2), since we have 1000 RF models over the bootstrap, we will use the average of vote values for label 1(the gene is a TS) from each RF model as a proxy for our pridiction. Vote could be thought of as the probability of this gene is a TS.
+```{r}
+#calculate the average vote for each gene in the training data set
+vote <- gwide_train_CGC$Gene %>% 
+  as.data.frame() %>%
+  rename(Gene = ".")
+
+for (i in 1:length(class_rf_list)) {
+  #convert votes for each bootstrapped rf sample to a dataframe
+  bs_vote <- as.data.frame(class_rf_list[[i]]$votes)
+  bs_vote <- rownames_to_column(bs_vote,var = "Gene")
+  bs_vote <- bs_vote[,-2] #get rid of the vote column for label "0", we only want vote column for label "1"
+  vote <- full_join(vote,bs_vote,by = "Gene")
+}
+
+
+#obtain the average vote for each gene and store it in a seperate column
+vote$avg_vote <- rowMeans(vote[2:1001],na.rm = TRUE) 
+
+#export the vote table as a backup
+write.table(vote,file = "/Users/weihan/Documents/GitHub/ts_machine_learning/data/gwide_hema_classification/vote_roc.txt")
+```
+
+Run ROC and visualize
+```{r}
+pROC_obj <- roc(gwide_train_CGC$TS_status,vote$avg_vote,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.90, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+sens.ci <- ci.se(pROC_obj)
+plot(sens.ci, type="shape", col="lightblue")
+## Warning in plot.ci.se(sens.ci, type = "shape", col = "lightblue"): Low
+## definition shape.
+plot(sens.ci, type="bars")
+
+#define a function to save the image
+save_jpeg <- function(x, filename, width=7, height=7,res = 300) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   jpeg(filename, width=width, height=height,res = res,units = "in")
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+save_jpeg(p,"/Users/weihan/Documents/GitHub/ts_machine_learning/data/Final_Figures/roc.jpg",7,7,600)
+
+
+```
+
+
+
+
+
+
+
+
